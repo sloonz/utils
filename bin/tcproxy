@@ -1,0 +1,131 @@
+#!/usr/bin/python
+
+import select
+import socket
+import sys
+
+Normal='\x1b[0m'
+Bold='\x1b[01m'
+Blue='\x1b[34m'
+Red='\x1b[31m'
+
+class IOManager(object):
+    """ A central interface to select() """
+    
+    _instance = None
+    
+    @classmethod
+    def instance(self):
+        if self._instance is None:
+            self._instance = self()
+        return self._instance
+    
+    def __init__(self):
+        self.rfd = []
+        self.wfd = []
+        self.xfd = []
+        self.rhandlers = {}
+        self.whandlers = {}
+        self.xhandlers = {}
+        self.running = False
+    
+    def add_r_channel(self, fd, handler):
+        self.rfd.append(fd)
+        self.rhandlers[fd] = handler
+    
+    def add_w_channel(self, fd, handler):
+        self.wfd.append(fd)
+        self.whandlers[fd] = handler
+    
+    def add_x_channel(self, fd, handler):
+        self.xfd.append(fd)
+        self.xhandlers[fd] = handler
+    
+    def remove_r_channel(self, fd):
+        self.rfd.remove(fd)
+        del self.rhandlers[fd]
+    
+    def remove_w_channel(self, fd):
+        self.wfd.remove(fd)
+        del self.whandlers[fd]
+    
+    def remove_x_channel(self, fd):
+        self.xfd.remove(fd)
+        del self.xhandlers[fd]
+    
+    def mainquit(self):
+        self.running = False
+    
+    def mainloop(self):
+        self.running = True
+        while self.running:
+            rfd, wfd, xfd = select.select(self.rfd, self.wfd, self.xfd)
+            
+            for fd in rfd: self.rhandlers[fd]()
+            for fd in wfd: self.whandlers[fd]()
+            for fd in xfd: self.xhandlers[fd]()
+
+class Proxy:
+    bufsize = 1024
+    
+    def __init__(self, client_socket):
+        self.client_socket = client_socket
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.connect((server_addr, server_port))
+        
+        IOManager.instance().add_r_channel(self.client_socket, self.client_data_available)
+        IOManager.instance().add_r_channel(self.server_socket, self.server_data_available)
+    
+    def close(self):
+        self.server_socket.close()
+        self.client_socket.close()
+        IOManager.instance().remove_r_channel(self.client_socket)
+        IOManager.instance().remove_r_channel(self.server_socket)
+        print Normal
+        print Bold + "=[ CLOSING CONNECTION ]=" + Normal
+    
+    def _data_available(self, frm, to, color):
+        buf = frm.recv(self.bufsize)
+        if len(buf) == 0:
+            return self.close()
+        
+        data = buf
+        while len(buf) == self.bufsize:
+            buf = frm.recv(self.bufsize)
+            data += buf 
+        sys.stdout.write(color + data)
+        sys.stdout.flush()
+        to.send(data)
+    
+    def client_data_available(self):
+        self._data_available(self.client_socket, self.server_socket, Blue)
+    
+    def server_data_available(self):
+        self._data_available(self.server_socket, self.client_socket, Red)
+
+def handle_client():
+    client_socket, client_addr = listening_socket.accept()
+    print Normal
+    print Bold + "=[ NEW CONNECTION ]=" + Normal
+    Proxy(client_socket)
+
+print "Client->server is blue ; server->client is red"
+
+# Parse args
+server_addr, server_port = sys.argv[1].split(':')
+server_port = int(server_port)
+if ':' in sys.argv[2]:
+    listening_addr, listening_port = sys.argv[2].split(':')
+else:
+    listening_addr, listening_port = '', sys.argv[2]
+listening_port = int(listening_port)
+
+# Open socket
+listening_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+listening_socket.bind((listening_addr, listening_port))
+listening_socket.listen(1)
+IOManager.instance().add_r_channel(listening_socket, handle_client)
+try:
+    IOManager.instance().mainloop()
+finally:
+    listening_socket.close()

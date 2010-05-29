@@ -1,0 +1,178 @@
+#!/usr/bin/perl -w
+
+use strict;
+use feature 'say';
+use Encode;
+
+sub escape {
+	return sprintf "\\%03o", ord(shift);
+}
+
+# gallica2txt(html file, text file):
+#   Transform the Gallica OCR (in HTML version) text into a suitable .txt
+sub gallica2txt {
+	my $html = shift;
+	my $txt = shift;
+	
+	open HTML, $html;
+	open TXT, ">", $txt;
+	
+	my $page;
+	
+	while(<HTML>) {
+		next unless m|^<div id="contentPageModeText">$|..m|^</div>$|;
+		$page = $1 if m|^<div id="numPageModeText">\D+(\d+)|;
+		next if m|^</?div|;
+		s|</?span[^>]*>||g;
+		s|<br[^>]*>|\n$page: |gi;
+		chomp;
+		say TXT "$page: $_";
+	}
+	
+	close HTML;
+	close TXT;
+}
+
+# pdf2txt(pdf file, text file)
+#    Extract the hidden text layer of the PDF file
+sub pdf2txt {
+	my $pdf = shift;
+	my $txt = shift;
+	my $pages = $1 if `pdfinfo "$pdf"` =~ /Pages:\s*(.+)/;
+	
+	open TXT, ">", $txt;
+	
+	for(1..$pages) {
+		say STDERR;
+		open PDF, "pdftotext -layout -f $_ -l $_ \"$pdf\" - |";
+		while(my $line = <PDF>) {
+			chomp $line;
+			say TXT "$_: $line";
+		}
+		close PDF;
+	}
+	
+	close TXT;
+}
+
+# create_text_layer(djvu file, text):
+#   Add text to the hidden text layer of the first page of the djvu file.
+#   Create and destroy a temporary file called (djvu file).dsed
+sub create_text_layer {
+	my $djvu = shift;
+	my $text = shift;
+	my ($max_x, $max_y) = ($1-1, $2-1) if `djvudump "$djvu"` =~ /DjVu (\d+)x(\d+)/;
+	my $dsed = "$djvu.dsed";
+	
+	# Workaround for MediaWiki bug #21526
+	# see https://bugzilla.wikimedia.org/show_bug.cgi?id=21526
+	$text =~ s/"(?=\s*\))//g;
+	
+	$text =~ s/\\/\\134/g;
+	$text = encode("ascii", $text, sub { sprintf "\\%03o", shift; });
+	$text =~ s/([\001-\037\177"])/escape($1)/ge;
+	
+	open DSED, ">", $dsed;
+	print DSED "(page 0 0 $max_x $max_y \"$text\")";
+	close DSED;
+	
+	system "djvused", $djvu, "-e", "select 1; set-txt '$dsed'", "-s";
+	unlink $dsed;
+}
+
+my $op = shift || "help";
+
+if($op eq "gallica2txt") {
+	gallica2txt(shift, shift);
+}
+elsif($op eq "pdf2txt") {
+	pdf2txt(shift, shift);
+}
+elsif($op eq "mkdjvu") {
+	my $pdf = shift;
+	my $title = $pdf;
+	   $title =~ s/\.pdf$//;
+	my $out = shift || "$title.djvu";
+	my $txt = shift || "$title.txt";
+	my $dpi = shift || 300;
+	my $start = shift || 1;
+	my $stop = shift || 0;
+	
+	my %text_layer;
+	if(-f $txt) {
+		open TXT, $txt;
+		while(<TXT>) {
+			next if !m|^(\d+): (.*)$|;
+			if(defined($text_layer{$1})) {
+				$text_layer{$1} .= "$2\n";
+			}
+			else {
+				$text_layer{$1} = "$2\n";
+			}
+		}
+		close TXT;
+	}
+
+	my $maxpages = $1 if `pdfinfo "$pdf"` =~ /Pages:\s*(.+)/;
+	$stop = $maxpages unless $stop > 0;
+	
+	for($start..$stop) {
+		say STDERR;
+		
+		my $pdfim;
+		my $djvuim = sprintf "%s-%03d-cropped.ppm", $title, $_;
+		my $djvu = sprintf "%s-%03d.djvu", $title, $_;
+		my $dsed = sprintf "%s-%03d.dsed", $title, $_;
+		
+		if($dpi eq "auto") {
+			system "pdfimages", "-f", $_, "-l", $_, $pdf, (sprintf "%s-%03d", $title, $_);
+			my @res = glob(sprintf "%s-%03d-000.*", $title, $_);
+			$pdfim = $res[0];
+		}
+		else {
+			system "pdftoppm", "-r", $dpi, "-f", $_, "-l", $_, $pdf, $title;
+			$pdfim = sprintf "%s-%03d.ppm", $title, $_;
+		}
+		system "convert", "-trim", "-bordercolor", "white", "-border", "10x10", $pdfim, $djvuim;
+		system "cpaldjvu", $djvuim, $djvu;
+		
+		create_text_layer($djvu, $text_layer{$_}) if defined($text_layer{$_});
+		
+		if($_ == $start) {
+			rename($djvu, $out);
+		}
+		else {
+			system "djvm", "-i", $out, $djvu;
+			unlink $djvu;
+		}
+		
+		unlink $pdfim;
+		unlink $djvuim;
+	}
+	system "djvutxt \"$out\" | iconv -f UTF8 -t UTF8 > /dev/null";
+	
+	say STDERR "WARNING: Created file seems invalid" if($?);
+}
+elsif($op eq "dl") {
+	my $title = shift;
+	my $url = shift;
+	system "badl", "--gallica-format=PDF", "--output-file=$title.pdf", $url;
+	die("Can't download PDF file") if $?;
+	system "badl", "--gallica-format=TXT", "--output-file=$title.html", $url;
+	if($? == 0) {
+		gallica2txt("$title.html", "$title.txt");
+		unlink "$title.html";
+	}
+}
+else {
+	my $bin = $1 if $0 =~ m|([^/]+)$|;
+	say "Usage:";
+	say " Download the PDF and the OCR from Gallica";
+	say "  $bin dl [Output prefix] [URL]";
+	say " Transform the Gallica OCR to a form suitable with mkdjvu";
+	say "  $bin gallica2txt [Gallica HTML file] [Output file]";
+	say " Extract the hidden text layer of a PDF file to a form suitable with mkdjvu";
+	say "  $bin pdf2txt [Gallica HTML file] [Output file]";
+	say " Transform a PDF file to a DjVu file";
+	say "  $bin mkdjvu [PDF file] [DjVu file] [Text file] [dpi=300]";
+}

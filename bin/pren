@@ -1,0 +1,108 @@
+#!/usr/bin/env python
+
+import os, sys
+
+REG_DOC="""Transform
+	reg [-n|-N|-p|-P|-s] arg1 arg2 arg3 -- args
+into
+	perl -e 'sub nl() { print "\n"; }' -e 'arg1;' -e 'arg2;' -e 'arg3;' -e 'print;' args
+
+Options:
+ -N: don't pass -n to perl
+ -n, -p: do nothing
+ -P: don't add the final "-e 'print;'"
+ -s: [imply -N] slurp (man perlintro)
+ -h, --help: print this message
+ Arguments after -- will be passed to perl without modification
+"""
+
+PREN_DOC="""Transform
+	pren [-d] arg1 arg2 -- args
+into
+	reg '$old = $_;' arg1 arg2 'rename($old,$_);' -- args
+Also drop -N and -s options, and the final -e 'print;' will be replaced into -e 'print "$old -> $_";'
+-d don't actually rename anything and drop -P (used for preview)"""
+
+import os, sys
+
+args   = []
+slurp  = False
+loop   = True
+prnt   = True
+direct = False
+dry    = False
+pren   = sys.argv[0].endswith('pren')
+
+def done():
+	# Parsing done (end of args or --)
+	# Must deal with slurp, loop, prnt, dry and pren
+	if pren:
+		if not dry:
+			# Append -e rename($old, $_);
+			args.append('-e')
+			args.append('rename($old, $_) if $_ ne $old;')
+		if dry or prnt:
+			# Append -e print;
+			args.append('-e')
+			args.append('print "$old -> $_\\n" if $_ ne $old;')
+	elif prnt:
+		# Append -e print;
+		args.append('-e')
+		args.append('print "$_\\n";')
+	
+	if pren:
+		args.insert(0, '$old = $_;')
+		args.insert(0, '-e')
+	
+	if slurp and not pren:
+		# Prepend -e slurp
+		args.insert(0, 'slurp;')
+		args.insert(0, '-e')
+	elif loop:
+		# Prepend -n
+		args.insert(0, 'chomp;')
+		args.insert(0, '-e')
+		args.insert(0, '-n')
+	
+	# Prepend misc functions
+	args.insert(0, 'sub slurp() { local $/; $_ = <>; }')
+	args.insert(0, '-e')
+	args.insert(0, 'sub nl() { print "\\n"; }')
+	args.insert(0, '-e')
+	
+	# Prepend perl
+	args.insert(0, 'perl')
+
+def help(arg = None):
+	if arg: print >> sys.stderr, "Bad argument: %s" % arg
+	if pren:
+		print >> sys.stderr, PREN_DOC
+	else:
+		print >> sys.stderr, REG_DOC
+	sys.exit(arg != None)
+
+for arg in sys.argv[1:]:
+	if direct: args.append(arg)
+	elif arg == '--':
+		direct = True
+		done()
+	elif arg == '--help': help()
+	elif arg.startswith('--'): help(arg)
+	elif arg.startswith('-'):
+		if 'h' in arg: help()
+		if 'P' in arg: prnt = False
+		if 'N' in arg and not pren: loop = False
+		if 's' in arg and not pren: slurp = True
+		if 'd' in arg: dry = True
+		for c in '-PpNnshd': arg = arg.replace(c, '')
+		if arg: help('-' + arg)
+	else:
+		args.append('-e')
+		if arg.startswith('/') or arg.startswith('m/') or arg.startswith('! /') \
+			or arg.startswith('! m/') or arg.startswith('!/') or arg.startswith('!m/'):
+			arg = 'next if ! ' + arg
+		args.append('%s;' % arg)
+
+if not direct: done()
+
+os.execvp('perl', args)

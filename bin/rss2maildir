@@ -1,0 +1,129 @@
+#!/usr/bin/python
+
+import threading
+import os
+import sys
+import socket
+import urllib2
+import bz2
+import time
+import user
+
+import yaml
+import feedparser
+
+socket.setdefaulttimeout(20)
+
+FEEDS_FILE  = os.path.join(user.home, ".config", "rss2maildir", "feeds.yml")
+CACHE_FILE  = os.path.join(user.home, ".cache", "rss2maildir", "feeds-cache.yml")
+MAIL_DIR    = (len(sys.argv) > 1 and sys.argv[1] or os.path.join(user.home, "Maildir")) + "/"
+MAX_THREADS = 3
+
+ThreadLimiter = threading.Semaphore(MAX_THREADS)
+Threads = []
+Feeds = []
+
+try:
+	Cache = yaml.load(open(CACHE_FILE))
+except:
+	Cache = {}
+
+def run_in_thread(f, *args, **kwargs):
+	def call_func():
+		try:
+			f(*args, **kwargs)
+		finally:
+			ThreadLimiter.release()
+	ThreadLimiter.acquire()
+	t = threading.Thread(target = call_func)
+	t.start()
+	Threads.append(t)
+
+def generate_filename(maildir):
+	generate_filename.count += 1
+	return "%d.%d.%d" % (time.time(), os.getpid(), generate_filename.count)
+generate_filename.count = 0
+
+def rfc2047_encode(text):
+	if isinstance(text, unicode):
+		text = text.encode("utf-8")
+	encoded = ""
+	for c in text:
+		if ord(c) >= 127 or c in "=?_ \t":
+			encoded += "=%02x" % ord(c)
+		else:
+			encoded += c
+	return "=?utf-8?q?%s?=" % encoded
+
+def process_feed(maildir, name, data):
+	print name
+	
+	feed = feedparser.parse(data)
+	to_rename = []
+	if not name in Cache:
+		Cache[name] = []
+	
+	for item in feed.entries:
+		published = item.get('published') or item.get('published') or item.get('updated') or ""
+		content = item.get('content')
+		if content:
+			content = content[0].value
+		if not content:
+			content = item.get('summary', '')
+		item_id = item.get('id') or item.get('link') or (published + u":" + item.get('title', ''))
+		item_id = item_id.encode('utf-8')
+		if item_id not in Cache[name]:
+			print u"  %s" % item.title
+			Cache[name].append(item_id)
+			
+			data  = "Subject: %s\n" % rfc2047_encode(item.get('title', ''))
+			data += "From: %s\n" % rfc2047_encode(item.get('author', ''))
+			data += "Date: %s\n" % published.encode("utf-8")
+			data += "Content-Transfer-Encoding: 8bit\n"
+			data += "Content-Type: text/html; charset=utf-8\n\n"
+			data += content.encode('utf-8')
+			if item.get('link'):
+				data += "<p><small><a href=\"%s\">View post</a></small></p>" % item.link.encode('utf-8')
+			
+			filename = generate_filename(maildir) + ",S=%d" % len(data)
+			with open(os.path.join(maildir, "tmp", filename), "w+") as fd:
+				# XXX TODO: why this doesn' works ? It should, according to
+				# http://wiki.dovecot.org/Plugins/Zlib
+				#~ fd.write(bz2.compress(data))
+				fd.write(data)
+			to_rename.append([os.path.join(maildir, "tmp", filename), os.path.join(maildir, "cur", filename)])
+	
+	for src, dst in to_rename:
+		os.rename(src, dst)
+
+def process_item(maildir, name, value):
+	if isinstance(value, dict):
+		for child_name, child_value in value.iteritems():
+			child_maildir = "%s.%s" % (maildir, child_name.replace("&", "&-"))
+			if not os.path.exists(child_maildir):
+				os.mkdir(child_maildir)
+				os.mkdir(os.path.join(child_maildir, "tmp"))
+				os.mkdir(os.path.join(child_maildir, "cur"))
+				os.mkdir(os.path.join(child_maildir, "new"))
+			process_item(child_maildir, child_name, child_value)
+	else:
+		def download_job():
+			try:
+				data = urllib2.urlopen(value).read()
+				Feeds.append([maildir, name, data])
+				sys.stdout.write(".")
+				sys.stdout.flush()
+			except Exception, e:
+				print >> sys.stderr, "\n%s: Error: %s" % (name, str(e))
+		run_in_thread(download_job)
+
+print "-[%s] Start-" % time.asctime()
+process_item(MAIL_DIR, None, yaml.load(open(FEEDS_FILE)))
+for t in Threads:
+	t.join()
+print
+for feed in Feeds:
+	process_feed(feed[0], feed[1], feed[2])
+	with open(CACHE_FILE, "w+") as fd:
+		fd.write(yaml.dump(Cache))
+print "-[%s] End-" % time.asctime()

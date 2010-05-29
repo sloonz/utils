@@ -1,0 +1,77 @@
+#!/usr/bin/python
+
+import sys, optparse, glob, re, os
+
+# Parse options
+opts = optparse.OptionParser()
+opts.add_option("-n", "--new", action="store_true", help="open a new window", default=False)
+opts.add_option("-l", "--list", action="store_true", help="list existing windows", default=False)
+opts.add_option("-v", "--verbose", action="store_true", help="be verbose", default=False)
+opts.add_option("-a", "--all", action="store_true", help="also show windows of other users", default=False)
+opts.add_option("-p", "--pid", help="open in this window")
+opts.add_option("-f", "--nofork", action="store_true", help="don't fork", default=False)
+(opts, args) = opts.parse_args()
+
+# Find existing instances
+instances = {}
+for f in glob.glob("/tmp/SciTE.*.in"):
+	exists = False
+	pid = re.search("\\d+", f).group(0)
+	try:
+		os.kill(int(pid), 0)
+		exists = True
+	except OSError, e:
+		exists = (e.errno == 1)
+	
+	if (((opts.list and opts.all) or (os.getuid() == os.stat(f).st_uid))) and exists:
+		instances[pid] = f
+
+# Handle --list
+if opts.list:
+	for pid in instances: print pid
+	sys.exit(0)
+
+# Find instance to work with
+instance = None
+if instances and not opts.new:
+	if opts.pid:
+		instance = open("/tmp/SciTE.%s.in" % opts.pid, "w")
+	else:
+		for inst in instances.values():
+			try:
+				instance = open(inst, "w")
+				break
+			except:
+				pass
+
+# Parse commands
+cmds = []
+if instance is None:
+	cmds.append("property:check.if.already.open=0")
+for arg in args:
+	if ":" in arg:
+		file, line = arg.rsplit(":", 1)
+		try: int(line)
+		except: file, line = arg, None
+	else:
+		file, line = arg, None
+	cmds.append("open:"+os.path.abspath(file))
+	if line:
+		cmds.append("goto:"+line)
+
+# Run
+if instance:
+	if opts.verbose:
+		print "Using %s" % instance.name
+	for cmd in cmds:
+		if opts.verbose:
+			print "> %s" % cmd
+		instance.write("%s\n" % cmd)
+	instance.close()
+else:
+	shcmd = ["scite"]
+	shcmd.extend("-"+cmd for cmd in cmds)
+	if opts.verbose:
+		print "New instance: " + " ".join(shcmd)
+	if opts.nofork or (not opts.nofork and os.fork() == 0):
+		os.execvp(shcmd[0], shcmd)

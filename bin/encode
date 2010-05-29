@@ -1,0 +1,119 @@
+#!/usr/bin/env python
+
+import os, sys, os.path, optparse, subprocess
+
+def wait():
+	try:
+		return os.wait()[1]
+	except KeyboardInterrupt:
+		return wait()
+
+def run(args):
+	if os.fork() == 0:
+		os.execlp(args[0], *args)
+	
+	try:
+		return os.wait()[1]
+	except KeyboardInterrupt:
+		wait()
+		sys.exit(1)
+
+mencoder = os.getenv("MENCODER", "mencoder").split(" ")
+
+parser = optparse.OptionParser() 
+parser.add_option("-p", "--profile", dest = "profile", help = "Default options file", metavar = "FILE")
+parser.add_option("-r", "--bitrate", dest = "br", help = "Bitrate for average bitrate encoding", metavar = "BITRATE")
+parser.add_option("-c", "--crf", dest = "crf", help = "Constant quaity encoding", metavar = "CRF")
+parser.add_option("-m", "--me", dest = "me", help = "Motion estimation", metavar = "ME")
+parser.add_option("-s", "--subq", dest = "subq", help = "Subpel refinement", metavar = "SUBQ")
+parser.add_option("-f", "--frameref", dest = "frameref", help = "Number of referencing frames", metavar = "FRAMEREF")
+parser.add_option("-k", "--keyint", dest = "keyint", help = "Maximum interval between two key frames", metavar = "KEYINT")
+parser.add_option("-u", "--scenecut", dest = "scenecut", help = "I-frames boost", metavar = "SCENECUT")
+parser.add_option("-b", "--bbias", dest = "bbias", help = "Maximum number of consecutive B-frames", metavar = "BBIAS")
+parser.add_option("-e", "--bframes", dest = "bframes", help = "B-frames boost", metavar = "BFRAMES")
+parser.add_option("-v", "--mv", dest = "mv", help = "Motion vectors options", metavar = "MV")
+parser.add_option("-q", "--qcomp", dest = "qcomp", help = "Quantums compression (only for ABR)", metavar = "QCOMP")
+parser.add_option("-d", "--direct-pred", dest = "direct_pred", help = "Motion estimation predictor", metavar = "DP")
+parser.add_option("-j", "--fps", dest = "fps", help = "FPS", metavar = "FPS")
+parser.add_option("-i", "--trellis", dest = "trellis", help = "Trellis", metavar = "TRELLIS")
+parser.add_option("-o", "--extra-x264-options", dest = "vidopts", help = "Extra X.264 options", metavar = "VIDOPTS")
+parser.add_option("-y", "--only-pass", dest="pass_", help = "Only do pass N (ABR)", metavar = "PASS")
+parser.add_option("-g", "--logfile", dest="logfile", help = "Log file for multipasses mode", metavar = "FILE")
+parser.add_option("-x", "--extra-options", dest="extra_options", help = "Extra options for mencoder", metavar = "OPTS")
+parser.add_option("-n", "--nosound", dest="nosound", help = "Never encode audio", action = "store_true")
+options, args = parser.parse_args()
+
+defaults = {
+	"me": "hex",
+	"subq": "5",
+	"frameref": "6",
+	"keyint": "500",
+	"scenecut": "0",
+	"bbias": "25",
+	"bframes": "15",
+	"mv": "partitions=all:8x8dct",
+	"qcomp": "0.8",
+	"direct_pred": "auto",
+	"fps": "24000/1001",
+	"trellis": "0",
+	"vidopts": "weight_b:b_pyramid=strict:mixed_refs:nofast_pskip",
+}
+
+if options.profile:
+	_ = os.path.expanduser
+	xdg_config = os.getenv("XDG_CONFIG_DIR", e("~/.config"))
+	paths = (".", e("~/.encode"), os.path.join(xdg_config, "encode"))
+	prfile = None
+	
+	for path in paths:
+		if os.file.exists(os.path.join(path, options.profile)):
+			prfile = os.file.exists(os.path.join(path, options.profile))
+			break
+	
+	if prfile is None:
+		print "Profile file not found"
+		sys.exit(1)
+	
+	for line in open(prfile):
+		if line.startswith('#'):
+			continue
+		
+		opt, val = line.split('=', 1)
+		if getattr(options, opt.strip()) is None:
+			setattr(options, opt.strip(), val.strip())
+
+for opt, val in defaults.iteritems():
+	if getattr(options, opt.strip()) is None:
+		setattr(options, opt.strip(), val.strip())
+
+options.__getitem__ = lambda x: getattr(options, x)
+x264encopts = "subq=%(subq)s:frameref=%(frameref)s:me=%(me)s:%(mv)s:bframes=%(bframes)s:%(vidopts)s:qcomp=%(qcomp)s:keyint=%(keyint)s:" \
+	"scenecut=%(scenecut)s:b_bias=%(bbias)s:direct_pred=%(direct_pred)s:trellis=%(trellis)s:" % options
+infile, outfile = args
+logfile = "encode-" + infile.replace(" ", "_").replace("/", "_") + ".2pass"
+mencoderopts = mencoder + [infile, "-o", outfile, "-ovc", "x264", "-passlogfile", logfile, "-ofps", options.fps]
+if options.extra_options:
+	mencoderopts = mencoderopts + options.extra_options.split(" ")
+
+# Video encoding, constant quality
+if options.crf:
+	sys.exit(run(mencoderopts + ["-oac", "mp3lame", "-x264encopts", x264encopts + "crf=%s" % options.crf]))
+
+# Video encoding, average bitrate
+pass_ = None
+if options.pass_:
+	pass_ = (options.pass_,)
+else:
+	pass_ = ("1", "2")
+
+for p in pass_:
+	rc = "bitrate=%s:pass=%s" % (options.br or "250", p)
+	if p == "1" or options.nosound:
+		audio = ["-nosound"]
+		if p == "1":
+			rc += ":turbo=1"
+	else:
+		audio = ["-oac", "mp3lame"]
+	
+	if run(mencoderopts + audio + ["-x264encopts", x264encopts + rc]):
+		sys.exit(1)

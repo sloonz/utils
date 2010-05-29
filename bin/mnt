@@ -1,0 +1,153 @@
+#!/usr/bin/perl
+
+use strict;
+use File::Basename;
+
+# mnt/umnt
+#-------------
+# Mounts and unmounts using udisks
+
+# Program name
+my $PROG=basename($0);
+my $MOUNTNAME="mnt";
+my $UMOUNTNAME="umnt";
+
+# Default FS type
+my $FSTYPE="";
+
+# Default mount options
+my $MOUNT_OPTIONS="";
+
+# Default unmount options
+my $UNMOUNT_OPTIONS="";
+
+# Default Destination directory
+my $DESTDIR="";
+
+# Default to listing devices
+my $LIST=0;
+
+sub usage {
+    print <<eof
+mnt/umnt
+
+Mounts and unmounts using udisks
+
+Usage: $PROG -h|--help
+       $MOUNTNAME -l
+       $MOUNTNAME [-t FSTYPE] [-o OPTIONS] DEVICE [DESTDIR]
+       $UMOUNTNAME -l
+       $UMOUNTNAME [-o OPTIONS] DEVICE|DESTDIR
+
+-h|--help           - Displays this help
+-l                  - List available devices for mounting/unmounting
+-t FSTYPE           - Filesystem type (default: auto)
+-o OPTIONS          - Mount options (default: ?)
+DEVICE              - Device to mount (eg: /dev/sdb1)
+DESTDIR             - Destination mount directory (in /media, default: ?)
+Example: $MOUNTNAME /dev/sdb1
+Output:  Mounted /dev/sdb1 to /media/disk
+eof
+}
+
+sub get_device_info {
+	my %dev;
+	my $path = shift;
+	open(DEVKIT, "-|", "udisks --show-info $path");
+	while(<DEVKIT>) {
+		chomp;
+		$dev{$1} = $2 if /^\s*(.+?)\s*:\s*(.+?)\s*$/;
+	}
+	close DEVKIT;
+	return %dev;
+}
+
+sub get_devices {
+	my @devs;
+	open(DEVKIT, "-|", "udisks --enumerate-device-files");
+	while(<DEVKIT>) {
+		chomp;
+		push(@devs, $_) unless m|^/dev/[^/]+/|;
+	}
+	close DEVKIT;
+	return @devs;
+}
+
+sub do_list {
+	foreach my $dev (get_devices()) {
+		my %infos = get_device_info($dev);
+		if($infos{"removable"} eq "1" && $infos{"has media"} =~ /^1/) {
+			print "$dev ".$infos{"mount paths"}."\n" if $PROG eq $UMOUNTNAME && $infos{"is mounted"} eq "1";
+			print "$dev\n"                           if $PROG eq $MOUNTNAME  && $infos{"is mounted"} eq "0";
+		}
+	}
+}
+
+sub do_mount {
+	my $dev = shift;
+	my $extra_opts = "";
+	$extra_opts .= " --mount-fstype $FSTYPE" if $FSTYPE ne "";
+	$extra_opts .= " --mount-options $MOUNT_OPTIONS" if $MOUNT_OPTIONS ne "";
+	exec "udisks --mount $dev $extra_opts";
+}
+
+sub do_umount {
+	my $dev = shift;
+	my $extra_opts = "";
+	$extra_opts .= " --unmount-options $UNMOUNT_OPTIONS" if $UNMOUNT_OPTIONS ne "";
+	exec "udisks --unmount $dev $extra_opts\n";
+}
+
+my @args;
+my $options;
+while($#ARGV >= 0) {
+	my $arg = shift(@ARGV);
+	if($arg eq "-h" || $arg eq "--help") {
+		usage;
+		exit(0);
+	}
+	elsif($arg eq "-l") {
+		do_list;
+		exit(0);
+	}
+	elsif($arg eq "-t" && $PROG eq $MOUNTNAME) {
+		$FSTYPE=shift;
+	}
+	elsif($arg eq "-o") {
+		$options=shift;
+	}
+	else {
+		# assume options are finished
+		push(@args, $arg);
+	}
+}
+
+if($#args == -1) {
+	do_list;
+	exit(0);
+}
+
+my $device=shift(@args);
+if($#args >= 0) {
+	print STDERR "Error: too many parameters\n";
+	exit(1);
+}
+
+if($PROG eq $MOUNTNAME) {
+	$MOUNT_OPTIONS=$options if $options;
+	do_mount($device);
+}
+elsif($PROG eq $UMOUNTNAME) {
+	$UNMOUNT_OPTIONS=$options if $options;
+	open(MTAB, "/etc/mtab");
+	while(<MTAB>) {
+		my @fields = split /\s+/;
+		do_umount($fields[0]) if $fields[1] eq $device;
+	}
+	close(MTAB);
+	do_umount($device);
+}
+else {
+	print STDERR "Who am I ?\n";
+	exit(1);
+}

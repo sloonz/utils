@@ -1,0 +1,68 @@
+#!/usr/bin/perl -w
+
+use strict;
+
+sub mydie {
+	print ((shift) . "\n");
+	exit(1);
+}
+
+my $extract_audio = "none";
+my $extract_video = "none";
+my $extract_subs = "none";
+my $extract_attached = 0;
+
+foreach (@ARGV) {
+	$extract_audio = $1 if /^--audio=(.+)$/;
+	$extract_video = $1 if /^--video=(.+)$/;
+	$extract_subs = $1 if /^--subs=(.+)$/;
+	$extract_attached = 1 if /^--(attachments)$/;
+	
+	mydie "Unknown option $_" if !defined($1) && /^-/;
+	
+	/^/; # undef $1
+}
+
+my $extract = 0;
+my $ext = "";
+my $ofile;
+my $out;
+
+my @tracks;
+
+foreach my $file (@ARGV) {
+	next if $file =~ /^-/;
+	
+	@tracks = ();
+	
+	foreach (split /\n/, `mkv-list "$file"`) {
+		system "mkvextract", "attachments", "$file", "$1:"
+			if /^attachment (\d+) / && $extract_attached;
+		
+		if(/^(?P<type>video|audio|subtitles) (?P<track>\d+) : (?P<codec>\S+) (?P<lang>\w+)\s*:?\s*(?P<title>.*)$/) {
+			my %infos = %+;
+			
+			$extract = 1 if(/^audio/ && $infos{"lang"} =~ /$extract_audio/);
+			$extract = 1 if(/^video/ && $infos{"lang"} =~ /$extract_video/);
+			$extract = 1 if(/^subtitles/ && $infos{"lang"} =~ /$extract_subs/);
+			
+			if($extract) {
+				$ext = "";
+				$ext = "avi" if $infos{"codec"} =~ /^V_MS\//;
+				$ext = "ass" if $infos{"codec"} =~ /\/(?:ASS|SSA)$/;
+				$ext = "ogg" if $infos{"codec"} =~ /^A_VORBIS$/;
+				$ext ||= $infos{"type"};
+				
+				$ofile = $file;
+				$ofile =~ s#[^/]+/##g;
+				$out = "$ofile-$infos{track}-$infos{lang}.$ext";
+				
+				push(@tracks, "$infos{track}:$out");
+				
+				$extract = 0;
+			}
+		}
+	}
+	
+	system "mkvextract", "tracks", $file, @tracks if @tracks;
+}

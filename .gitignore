@@ -1,0 +1,4 @@
+*.o
+*.6
+dnsbackend
+SciMakefile
