@@ -5,9 +5,10 @@ import os
 import sys
 import socket
 import urllib2
-import bz2
 import time
 import user
+import re
+import base64
 
 import yaml
 import feedparser
@@ -43,6 +44,23 @@ def generate_filename(maildir):
 	generate_filename.count += 1
 	return "%d.%d.%d" % (time.time(), os.getpid(), generate_filename.count)
 generate_filename.count = 0
+
+def maildir_encode(s):
+	# See: http://www.courier-mta.org/maildir.html
+
+	if not isinstance(s, unicode):
+		s = s.decode('utf-8')
+	s = s.replace(u"&", u"&-")
+
+	# Printable ascii, except "/" and "."
+	uniclass = u"\u0020-\u002d\u0030-\u007f"
+	parts = re.findall(u"[%s]+|[^%s]+" % (uniclass, uniclass), s, re.UNICODE)
+	for i in range(len(parts)):
+		if re.match(u"[^%s]+" % uniclass, parts[i]): # must encode it
+			encoded = base64.b64encode(parts[i].encode('utf-16-be'))
+			encoded = encoded.rstrip('=').replace('/', ',')
+			parts[i] = "&%s-" % encoded
+	return "".join(parts)
 
 def rfc2047_encode(text):
 	if isinstance(text, unicode):
@@ -99,7 +117,7 @@ def process_feed(maildir, name, data):
 def process_item(maildir, name, value):
 	if isinstance(value, dict):
 		for child_name, child_value in value.iteritems():
-			child_maildir = "%s.%s" % (maildir, child_name.replace("&", "&-"))
+			child_maildir = "%s.%s" % (maildir, maildir_encode(child_name))
 			if not os.path.exists(child_maildir):
 				os.mkdir(child_maildir)
 				os.mkdir(os.path.join(child_maildir, "tmp"))
