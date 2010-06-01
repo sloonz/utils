@@ -9,6 +9,7 @@ import time
 import user
 import re
 import base64
+import email
 
 import yaml
 import feedparser
@@ -82,7 +83,7 @@ def process_feed(maildir, name, data):
 		Cache[name] = []
 	
 	for item in feed.entries:
-		published = item.get('published') or item.get('published') or item.get('updated') or ""
+		published = item.get('published_parsed') or item.get('created_parsed') or item.get('updated_parsed', time.localtime())
 		content = item.get('content')
 		if content:
 			content = content[0].value
@@ -96,7 +97,7 @@ def process_feed(maildir, name, data):
 			
 			data  = "Subject: %s\n" % rfc2047_encode(item.get('title', ''))
 			data += "From: %s\n" % rfc2047_encode(item.get('author', ''))
-			data += "Date: %s\n" % published.encode("utf-8")
+			data += "Date: %s\n" % email.Utils.formatdate(time.mktime(published))
 			data += "Content-Transfer-Encoding: 8bit\n"
 			data += "Content-Type: text/html; charset=utf-8\n\n"
 			data += content.encode('utf-8')
