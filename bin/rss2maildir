@@ -105,13 +105,11 @@ def process_feed(maildir, name, data):
 				data += "<p><small><a href=\"%s\">View post</a></small></p>" % item.link.encode('utf-8')
 			
 			filename = generate_filename(maildir) + ",S=%d" % len(data)
-			with open(os.path.join(maildir, "tmp", filename), "w+") as fd:
-				# XXX TODO: why this doesn' works ? It should, according to
-				# http://wiki.dovecot.org/Plugins/Zlib
-				#~ fd.write(bz2.compress(data))
-				fd.write(data)
+			fd = open(os.path.join(maildir, "tmp", filename), "w+")
+			fd.write(data)
+			fd.close()
 			to_rename.append([os.path.join(maildir, "tmp", filename), os.path.join(maildir, "cur", filename)])
-	
+
 	for src, dst in to_rename:
 		os.rename(src, dst)
 
@@ -143,6 +141,7 @@ for t in Threads:
 print
 for feed in Feeds:
 	process_feed(feed[0], feed[1], feed[2])
-	with open(CACHE_FILE, "w+") as fd:
-		fd.write(yaml.dump(Cache))
+	fd = open(CACHE_FILE, "w+")
+	fd.write(yaml.dump(Cache))
+	fd.close()
 print "-[%s] End-" % time.asctime()
