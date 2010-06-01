@@ -134,14 +134,20 @@ def process_item(maildir, name, value):
 				print >> sys.stderr, "\n%s: Error: %s" % (name, str(e))
 		run_in_thread(download_job)
 
-print "-[%s] Start-" % time.asctime()
-process_item(MAIL_DIR, None, yaml.load(open(FEEDS_FILE)))
-for t in Threads:
-	t.join()
-print
-for feed in Feeds:
-	process_feed(feed[0], feed[1], feed[2])
-	fd = open(CACHE_FILE, "w+")
-	fd.write(yaml.dump(Cache))
-	fd.close()
-print "-[%s] End-" % time.asctime()
+def main():
+	Feeds = []
+	print "-[%s] Start-" % time.asctime()
+	process_item(MAIL_DIR, None, yaml.load(open(FEEDS_FILE)))
+	for t in Threads:
+		t.join()
+	print
+	for feed in Feeds:
+		process_feed(feed[0], feed[1], feed[2])
+		fd = open(CACHE_FILE, "w+")
+		fd.write(yaml.dump(Cache))
+		fd.close()
+	print "-[%s] End-" % time.asctime()
+
+if __name__ == "__main__":
+	main()
+
