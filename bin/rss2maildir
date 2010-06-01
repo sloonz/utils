@@ -75,7 +75,7 @@ def rfc2047_encode(text):
 	return "=?utf-8?q?%s?=" % encoded
 
 def process_feed(maildir, name, data):
-	print name
+	print name.encode('utf-8')
 	
 	feed = feedparser.parse(data)
 	to_rename = []
@@ -92,7 +92,7 @@ def process_feed(maildir, name, data):
 		item_id = item.get('id') or item.get('link') or (published + u":" + item.get('title', ''))
 		item_id = item_id.encode('utf-8')
 		if item_id not in Cache[name]:
-			print u"  %s" % item.title
+			print (u"  %s" % item.title).encode('utf-8')
 			Cache[name].append(item_id)
 			
 			data  = "Subject: %s\n" % rfc2047_encode(item.get('title', ''))
@@ -131,11 +131,11 @@ def process_item(maildir, name, value):
 				sys.stdout.write(".")
 				sys.stdout.flush()
 			except Exception, e:
-				print >> sys.stderr, "\n%s: Error: %s" % (name, str(e))
+				print >> sys.stderr, ("\n%s: Error: %s" % (name, str(e))).encode('utf-8')
 		run_in_thread(download_job)
 
 def main():
-	Feeds = []
+	del Feeds[:]
 	print "-[%s] Start-" % time.asctime()
 	process_item(MAIL_DIR, None, yaml.load(open(FEEDS_FILE)))
 	for t in Threads:
