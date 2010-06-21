@@ -19,162 +19,162 @@ CACHE_FILE  = os.path.join(user.home, ".cache", "rss2maildir", "feeds-cache.yml"
 MAIL_DIR    = (len(sys.argv) > 1 and sys.argv[1] or os.path.join(user.home, "Maildir")) + "/"
 
 try:
-	Cache = yaml.load(open(CACHE_FILE))
+    Cache = yaml.load(open(CACHE_FILE))
 except:
-	Cache = {}
+    Cache = {}
 
 def safe_write(file, data):
-	fd = open(file + ".new", "w+")
-	fd.write(data)
-	fd.close()
-	os.rename(file + ".new", file)
+    fd = open(file + ".new", "w+")
+    fd.write(data)
+    fd.close()
+    os.rename(file + ".new", file)
 
 def generate_new_mail():
-	generate_new_mail.count += 1
-	return "%d.%d.%d" % (time.time(), os.getpid(), generate_new_mail.count)
+    generate_new_mail.count += 1
+    return "%d.%d.%d" % (time.time(), os.getpid(), generate_new_mail.count)
 generate_new_mail.count = 0
 
 def maildir_encode(s):
-	# See: http://www.courier-mta.org/maildir.html
+    # See: http://www.courier-mta.org/maildir.html
 
-	if not isinstance(s, unicode):
-		s = s.decode('utf-8')
-	s = s.replace(u"&", u"&-")
+    if not isinstance(s, unicode):
+        s = s.decode('utf-8')
+    s = s.replace(u"&", u"&-")
 
-	# Printable ascii, except "/" and "."
-	uniclass = u"\u0020-\u002d\u0030-\u007f"
-	parts = re.findall(u"[%s]+|[^%s]+" % (uniclass, uniclass), s, re.UNICODE)
-	for i in range(len(parts)):
-		if re.match(u"[^%s]+" % uniclass, parts[i]): # must encode it
-			encoded = base64.b64encode(parts[i].encode('utf-16-be'))
-			encoded = encoded.rstrip('=').replace('/', ',')
-			parts[i] = "&%s-" % encoded
-	return "".join(parts)
+    # Printable ascii, except "/" and "."
+    uniclass = u"\u0020-\u002d\u0030-\u007f"
+    parts = re.findall(u"[%s]+|[^%s]+" % (uniclass, uniclass), s, re.UNICODE)
+    for i in range(len(parts)):
+        if re.match(u"[^%s]+" % uniclass, parts[i]): # must encode it
+            encoded = base64.b64encode(parts[i].encode('utf-16-be'))
+            encoded = encoded.rstrip('=').replace('/', ',')
+            parts[i] = "&%s-" % encoded
+    return "".join(parts)
 
 def rfc2047_encode(text):
-	if isinstance(text, unicode):
-		text = text.encode("utf-8")
-	encoded = ""
-	for c in text:
-		if ord(c) >= 127 or c in "=?_ \t":
-			encoded += "=%02x" % ord(c)
-		else:
-			encoded += c
-	return "=?utf-8?q?%s?=" % encoded
+    if isinstance(text, unicode):
+        text = text.encode("utf-8")
+    encoded = ""
+    for c in text:
+        if ord(c) >= 127 or c in "=?_ \t":
+            encoded += "=%02x" % ord(c)
+        else:
+            encoded += c
+    return "=?utf-8?q?%s?=" % encoded
 
 class TwistedWebClient(twisted.internet.protocol.Protocol):
-	agent = twisted.web.client.Agent(twisted.internet.reactor)
-	
-	def __init__(self, url):
-		self.url = url
-		self.data = ""
-		self.finished_signal = twisted.internet.defer.Deferred()
-	
-	def gotResponse(self, response):
-		response.deliverBody(self)
-		return self.finished_signal
-	
-	def dataReceived(self, data):
-		self.data += data
-	
-	def connectionLost(self, reason):
-		if reason.check(twisted.web.client.ResponseDone) or reason.check(twisted.web.http.PotentialDataLoss):
-			self.process(self.data)
-			self.finished_signal.callback(None)
-		else:
-			self.error(reason)
-			self.finished_signal.errback(reason)
+    agent = twisted.web.client.Agent(twisted.internet.reactor)
+    
+    def __init__(self, url):
+        self.url = url
+        self.data = ""
+        self.finished_signal = twisted.internet.defer.Deferred()
+    
+    def gotResponse(self, response):
+        response.deliverBody(self)
+        return self.finished_signal
+    
+    def dataReceived(self, data):
+        self.data += data
+    
+    def connectionLost(self, reason):
+        if reason.check(twisted.web.client.ResponseDone) or reason.check(twisted.web.http.PotentialDataLoss):
+            self.process(self.data)
+            self.finished_signal.callback(None)
+        else:
+            self.error(reason)
+            self.finished_signal.errback(reason)
 
-	def download(self):
-		req = TwistedWebClient.agent.request('GET', self.url, twisted.web.http_headers.Headers({}), None)
-		req.addCallback(self.gotResponse)
-		return self
-	
+    def download(self):
+        req = TwistedWebClient.agent.request('GET', self.url, twisted.web.http_headers.Headers({}), None)
+        req.addCallback(self.gotResponse)
+        return self
+    
 class FeedHandler(TwistedWebClient):
-	def __init__(self, maildir, name, url):
-		TwistedWebClient.__init__(self, url)
-		self.maildir = maildir
-		self.name = name
-		self.finished = None
-	
-	def process(self, data):
-		print self.name.encode('utf-8')
-		
-		feed = feedparser.parse(data)
-		to_rename = []
-		if not self.name in Cache:
-			Cache[self.name] = []
-		
-		for item in feed.entries:
-			published = item.get('published_parsed') or item.get('created_parsed') or item.get('updated_parsed', time.localtime())
-			content = item.get('content')
-			if content:
-				content = content[0].value
-			if not content:
-				content = item.get('summary', '')
-			item_id = item.get('id') or item.get('link') or (published + u":" + item.get('title', ''))
-			item_id = item_id.encode('utf-8')
-			if item_id not in Cache[self.name]:
-				print (u"  %s" % item.title).encode('utf-8')
-				Cache[self.name].append(item_id)
-				
-				data  = "Subject: %s\n" % rfc2047_encode(item.get('title', ''))
-				data += "From: %s\n" % rfc2047_encode(item.get('author', ''))
-				data += "Date: %s\n" % email.Utils.formatdate(time.mktime(published))
-				data += "Content-Transfer-Encoding: 8bit\n"
-				data += "Content-Type: text/html; charset=utf-8\n\n"
-				data += content.encode('utf-8')
-				if item.get('link'):
-					data += "<p><small><a href=\"%s\">View post</a></small></p>" % item.link.encode('utf-8')
-				
-				filename = generate_new_mail() + ",S=%d" % len(data)
-				fd = open(os.path.join(self.maildir, "tmp", filename), "w+")
-				fd.write(data)
-				fd.close()
-				to_rename.append([os.path.join(self.maildir, "tmp", filename),
-				                  os.path.join(self.maildir, "cur", filename)])
+    def __init__(self, maildir, name, url):
+        TwistedWebClient.__init__(self, url)
+        self.maildir = maildir
+        self.name = name
+        self.finished = None
+    
+    def process(self, data):
+        print self.name.encode('utf-8')
+        
+        feed = feedparser.parse(data)
+        to_rename = []
+        if not self.name in Cache:
+            Cache[self.name] = []
+        
+        for item in feed.entries:
+            published = item.get('published_parsed') or item.get('created_parsed') or item.get('updated_parsed', time.localtime())
+            content = item.get('content')
+            if content:
+                content = content[0].value
+            if not content:
+                content = item.get('summary', '')
+            item_id = item.get('id') or item.get('link') or (published + u":" + item.get('title', ''))
+            item_id = item_id.encode('utf-8')
+            if item_id not in Cache[self.name]:
+                print (u"  %s" % item.title).encode('utf-8')
+                Cache[self.name].append(item_id)
+                
+                data  = "Subject: %s\n" % rfc2047_encode(item.get('title', ''))
+                data += "From: %s\n" % rfc2047_encode(item.get('author', ''))
+                data += "Date: %s\n" % email.Utils.formatdate(time.mktime(published))
+                data += "Content-Transfer-Encoding: 8bit\n"
+                data += "Content-Type: text/html; charset=utf-8\n\n"
+                data += content.encode('utf-8')
+                if item.get('link'):
+                    data += "<p><small><a href=\"%s\">View post</a></small></p>" % item.link.encode('utf-8')
+                
+                filename = generate_new_mail() + ",S=%d" % len(data)
+                fd = open(os.path.join(self.maildir, "tmp", filename), "w+")
+                fd.write(data)
+                fd.close()
+                to_rename.append([os.path.join(self.maildir, "tmp", filename),
+                                  os.path.join(self.maildir, "cur", filename)])
 
-		safe_write(CACHE_FILE, yaml.dump(Cache))
-		for src, dst in to_rename:
-			os.rename(src, dst)
-		if self.finished:
-			self.finished(self, True)
-	
-	def error(self, reason):
-		if self.finished:
-			self.finished(self, False)
+        safe_write(CACHE_FILE, yaml.dump(Cache))
+        for src, dst in to_rename:
+            os.rename(src, dst)
+        if self.finished:
+            self.finished(self, True)
+    
+    def error(self, reason):
+        if self.finished:
+            self.finished(self, False)
 
 def config_entry_get_items(maildir, name, value):
-	if isinstance(value, dict):
-		ret = []
-		for child_name, child_value in value.iteritems():
-			child_maildir = "%s.%s" % (maildir, maildir_encode(child_name))
-			if not os.path.exists(child_maildir):
-				os.mkdir(child_maildir)
-				os.mkdir(os.path.join(child_maildir, "tmp"))
-				os.mkdir(os.path.join(child_maildir, "cur"))
-				os.mkdir(os.path.join(child_maildir, "new"))
-			ret.extend(config_entry_get_items(child_maildir, child_name, child_value))
-		return ret
-	else:
-		return [FeedHandler(maildir, name, value)]
+    if isinstance(value, dict):
+        ret = []
+        for child_name, child_value in value.iteritems():
+            child_maildir = "%s.%s" % (maildir, maildir_encode(child_name))
+            if not os.path.exists(child_maildir):
+                os.mkdir(child_maildir)
+                os.mkdir(os.path.join(child_maildir, "tmp"))
+                os.mkdir(os.path.join(child_maildir, "cur"))
+                os.mkdir(os.path.join(child_maildir, "new"))
+            ret.extend(config_entry_get_items(child_maildir, child_name, child_value))
+        return ret
+    else:
+        return [FeedHandler(maildir, name, value)]
 
 def config_get_items():
-	return config_entry_get_items(MAIL_DIR, None, yaml.load(open(FEEDS_FILE)))
+    return config_entry_get_items(MAIL_DIR, None, yaml.load(open(FEEDS_FILE)))
 
 def main():
-	def item_done_callback(item, success):
-		items.remove(item)
-		if not items:
-			twisted.internet.reactor.stop()
+    def item_done_callback(item, success):
+        items.remove(item)
+        if not items:
+            twisted.internet.reactor.stop()
 
-	print "-[%s] Start-" % time.asctime()
-	items = config_get_items()
-	for item in items:
-		item.finished = item_done_callback
-		item.download()
-	twisted.internet.reactor.run()
-	print "-[%s] End-" % time.asctime()
+    print "-[%s] Start-" % time.asctime()
+    items = config_get_items()
+    for item in items:
+        item.finished = item_done_callback
+        item.download()
+    twisted.internet.reactor.run()
+    print "-[%s] End-" % time.asctime()
 
 if __name__ == "__main__":
-	main()
+    main()
