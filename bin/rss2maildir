@@ -10,9 +10,7 @@ import email
 
 import yaml
 import feedparser
-import twisted.web, twisted.web.client, twisted.internet.protocol, twisted.web.http
-
-twisted.web.http.HTTPFactory.timeOut = 20
+import twisted.web.client, twisted.internet.reactor, twisted.internet.defer
 
 FEEDS_FILE  = os.path.join(user.home, ".config", "rss2maildir", "feeds.yml")
 CACHE_FILE  = os.path.join(user.home, ".cache", "rss2maildir", "feeds-cache.yml")
@@ -62,32 +60,28 @@ def rfc2047_encode(text):
             encoded += c
     return "=?utf-8?q?%s?=" % encoded
 
-class TwistedWebClient(twisted.internet.protocol.Protocol):
+class TwistedWebClient:
     agent = twisted.web.client.Agent(twisted.internet.reactor)
     
     def __init__(self, url):
         self.url = url
-        self.data = ""
-        self.finished_signal = twisted.internet.defer.Deferred()
     
-    def gotResponse(self, response):
-        response.deliverBody(self)
-        return self.finished_signal
+    def callback(self, source):
+        twisted.internet.reactor.callLater(0, self.process, source)
     
-    def dataReceived(self, data):
-        self.data += data
-    
-    def connectionLost(self, reason):
-        if reason.check(twisted.web.client.ResponseDone) or reason.check(twisted.web.http.PotentialDataLoss):
-            self.process(self.data)
-            self.finished_signal.callback(None)
+    def errback(self, error):
+        if error.check(twisted.internet.defer.TimeoutError) and self.tc < 3:
+            self.tc += 1
+            self.download(False)
         else:
-            self.error(reason)
-            self.finished_signal.errback(reason)
-
-    def download(self):
-        req = TwistedWebClient.agent.request('GET', self.url, twisted.web.http_headers.Headers({}), None)
-        req.addCallback(self.gotResponse)
+            self.error(error)
+    
+    def download(self, reset_timeout_counter = True):
+        if reset_timeout_counter:
+            self.tc = 0
+        d = twisted.web.client.getPage(self.url, timeout = 150)
+        d.addCallback(self.callback)
+        d.addErrback(self.errback)
         return self
     
 class FeedHandler(TwistedWebClient):
