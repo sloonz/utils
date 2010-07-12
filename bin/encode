@@ -39,7 +39,6 @@ parser.add_option("-o", "--extra-x264-options", dest = "vidopts", help = "Extra 
 parser.add_option("-y", "--only-pass", dest="pass_", help = "Only do pass N (ABR)", metavar = "PASS")
 parser.add_option("-g", "--logfile", dest="logfile", help = "Log file for multipasses mode", metavar = "FILE")
 parser.add_option("-x", "--extra-options", dest="extra_options", help = "Extra options for mencoder", metavar = "OPTS")
-parser.add_option("-n", "--nosound", dest="nosound", help = "Never encode audio", action = "store_true")
 options, args = parser.parse_args()
 
 defaults = {
@@ -95,7 +94,7 @@ if options.extra_options:
 
 # Video encoding, constant quality
 if options.crf:
-	sys.exit(run(mencoderopts + ["-oac", "mp3lame", "-x264encopts", x264encopts + "crf=%s" % options.crf]))
+	sys.exit(run(mencoderopts + ["-x264encopts", x264encopts + "crf=%s" % options.crf]))
 
 # Video encoding, average bitrate
 pass_ = None
@@ -106,12 +105,5 @@ else:
 
 for p in pass_:
 	rc = "bitrate=%s:pass=%s" % (options.br or "250", p)
-	if p == "1" or options.nosound:
-		audio = ["-nosound"]
-		if p == "1":
-			rc += ":turbo=1"
-	else:
-		audio = ["-oac", "mp3lame"]
-	
-	if run(mencoderopts + audio + ["-x264encopts", x264encopts + rc]):
+	if run(mencoderopts + ["-nosound", "-x264encopts", x264encopts + rc]):
 		sys.exit(1)
