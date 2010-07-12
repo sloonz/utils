@@ -14,7 +14,7 @@ import twisted.web.client, twisted.internet.reactor, twisted.internet.defer
 
 FEEDS_FILE  = os.path.join(user.home, ".config", "rss2maildir", "feeds.yml")
 CACHE_FILE  = os.path.join(user.home, ".cache", "rss2maildir", "feeds-cache.yml")
-MAIL_DIR    = (len(sys.argv) > 1 and sys.argv[1] or os.path.join(user.home, "Maildir")) + "/"
+MAIL_DIR    = os.path.join(user.home, "Maildir") + "/"
 
 try:
     Cache = yaml.load(open(CACHE_FILE))
@@ -135,6 +135,7 @@ class FeedHandler(TwistedWebClient):
             self.finished(self, True)
     
     def error(self, reason):
+        print "Error while downloading %s: %s\n" (self.name, reason)
         if self.finished:
             self.finished(self, False)
 
@@ -156,12 +157,20 @@ def config_entry_get_items(maildir, name, value):
 def config_get_items():
     return config_entry_get_items(MAIL_DIR, None, yaml.load(open(FEEDS_FILE)))
 
-def main():
-    def item_done_callback(item, success):
+if __name__ == "__main__":
+    def item_done_callback_nondaemon(item, success):
         items.remove(item)
         if not items:
             twisted.internet.reactor.stop()
 
+    def item_done_callback_daemon(item, success):
+        twisted.internet.reactor.callLater(15*60, item.download)
+
+    if len(sys.argv) > 1 and sys.argv[1] in ("-d", "--daemon"):
+        item_done_callback = item_done_callback_daemon
+    else:
+        item_done_callback = item_done_callback_nondaemon
+    
     print "-[%s] Start-" % time.asctime()
     items = config_get_items()
     for item in items:
@@ -169,6 +178,3 @@ def main():
         item.download()
     twisted.internet.reactor.run()
     print "-[%s] End-" % time.asctime()
-
-if __name__ == "__main__":
-    main()
