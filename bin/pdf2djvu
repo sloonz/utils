@@ -95,6 +95,7 @@ elsif($op eq "mkdjvu") {
 	my $out = shift || "$title.djvu";
 	my $txt = shift || "$title.txt";
 	my $dpi = shift || 300;
+	my $type = shift || "document"; # bitonal, photo, or document
 	my $start = shift || 1;
 	my $stop = shift || 0;
 	
@@ -115,12 +116,25 @@ elsif($op eq "mkdjvu") {
 
 	my $maxpages = $1 if `pdfinfo "$pdf"` =~ /Pages:\s*(.+)/;
 	$stop = $maxpages unless $stop > 0;
+
+	my $djvu_bin;
+	my $djvu_bin_fmt = "ppm";
+	if($type eq "document") {
+		$djvu_bin = "cpaldjvu";
+	} elsif($type eq "photo") {
+		$djvu_bin = "c44";
+	} elsif($type eq "bitonal") {
+		$djvu_bin = "cjb2";
+		$djvu_bin_fmt = "pbm";
+	} else {
+		die("Unknown format");
+	}
 	
 	for($start..$stop) {
 		say STDERR;
 		
 		my $pdfim;
-		my $djvuim = sprintf "%s-%03d-cropped.ppm", $title, $_;
+		my $djvuim = sprintf "%s-%03d-cropped.$djvu_bin_fmt", $title, $_;
 		my $djvu = sprintf "%s-%03d.djvu", $title, $_;
 		my $dsed = sprintf "%s-%03d.dsed", $title, $_;
 		
@@ -134,7 +148,7 @@ elsif($op eq "mkdjvu") {
 			$pdfim = sprintf "%s-%03d.ppm", $title, $_;
 		}
 		system "convert", "-trim", "-bordercolor", "white", "-border", "10x10", $pdfim, $djvuim;
-		system "cpaldjvu", $djvuim, $djvu;
+		system $djvu_bin, $djvuim, $djvu;
 		
 		create_text_layer($djvu, $text_layer{$_}) if defined($text_layer{$_});
 		
@@ -156,9 +170,9 @@ elsif($op eq "mkdjvu") {
 elsif($op eq "dl") {
 	my $title = shift;
 	my $url = shift;
-	system "badl", "--gallica-format=PDF", "--output-file=$title.pdf", $url;
+	system "badl-standalone", "--gallica-format=PDF", "--output-file=$title.pdf", $url;
 	die("Can't download PDF file") if $?;
-	system "badl", "--gallica-format=TXT", "--output-file=$title.html", $url;
+	system "badl-standalone", "--gallica-format=TXT", "--output-file=$title.html", $url;
 	if($? == 0) {
 		gallica2txt("$title.html", "$title.txt");
 		unlink "$title.html";
