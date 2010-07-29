@@ -7,10 +7,19 @@ import user
 import re
 import base64
 import email
+import urllib
+import urlparse
+import copy
+import socket
+import netrc
 
 import yaml
 import feedparser
+import lxml.etree
+import mx.DateTime
 import twisted.web.client, twisted.internet.reactor, twisted.internet.defer
+
+from xml.sax.saxutils import escape as htmlescape
 
 FEEDS_FILE  = os.path.join(user.home, ".config", "rss2maildir", "feeds.yml")
 CACHE_FILE  = os.path.join(user.home, ".cache", "rss2maildir", "feeds-cache.yml")
@@ -26,11 +35,6 @@ def safe_write(file, data):
     fd.write(data)
     fd.close()
     os.rename(file + ".new", file)
-
-def generate_new_mail():
-    generate_new_mail.count += 1
-    return "%d.%d.%d" % (time.time(), os.getpid(), generate_new_mail.count)
-generate_new_mail.count = 0
 
 def maildir_encode(s):
     # See: http://www.courier-mta.org/maildir.html
@@ -63,43 +67,134 @@ def rfc2047_encode(text):
 class TwistedWebClient:
     agent = twisted.web.client.Agent(twisted.internet.reactor)
     
-    def __init__(self, url):
+    @classmethod
+    def do_get(self, url, cb_done, cb_error, **twisted_args):
+        self(url, cb_done, cb_error, **twisted_args).download()
+    
+    @classmethod
+    def do_post(self, url, postdata, cb_done, cb_error, **twisted_kwargs):
+        if isinstance(postdata, dict):
+            postdata = urllib.urlencode(postdata)
+            if not 'headers' in twisted_kwargs:
+                twisted_kwargs['headers'] = {}
+            twisted_kwargs['headers']['Content-Type'] = 'application/x-www-form-urlencoded'
+        if not 'method' in twisted_kwargs:
+            twisted_kwargs['method'] = "POST"
+        twisted_kwargs['postdata'] = postdata
+        self.do_get(url, cb_done, cb_error, **twisted_kwargs)
+    
+    def __init__(self, url, cb_done = None, cb_error = None, **twisted_args):
         self.url = url
+        self.twisted_args = twisted_args
+        self.cb_done = cb_done
+        self.cb_error = cb_error
     
-    def callback(self, source):
-        twisted.internet.reactor.callLater(0, self.process, source)
+    def handle_done(self, source):
+        if self.cb_done:
+            self.cb_done(source)
     
-    def errback(self, error):
-        if error.check(twisted.internet.defer.TimeoutError) and self.tc < 3:
-            self.tc += 1
-            self.download(False)
-        else:
-            self.error(error)
+    def handle_error(self, error):
+        if self.cb_error:
+            self.cb_error(error)
     
     def download(self, reset_timeout_counter = True):
+        def callback(source):
+            twisted.internet.reactor.callLater(0, self.handle_done, source)
+        
+        def errback(error):
+            if error.check(twisted.internet.defer.TimeoutError) and self.tc < 3:
+                self.tc += 1
+                self.download(False)
+            else:
+                twisted.internet.reactor.callLater(0, self.handle_error, error)
+    
         if reset_timeout_counter:
             self.tc = 0
-        d = twisted.web.client.getPage(self.url, timeout = 150)
-        d.addCallback(self.callback)
-        d.addErrback(self.errback)
+        d = twisted.web.client.getPage(self.url, timeout = 150, **self.twisted_args)
+        d.addCallbacks(callback, errback)
         return self
+
+class Handler(object):
+    initial_cache = []
+    mails_count = 0
     
-class FeedHandler(TwistedWebClient):
+    def __init__(self, maildir, name, url, cb_done = None):
+        self.maildir = maildir
+        self.url = url
+        self.name = name
+        self.cb_done = cb_done
+        self.to_rename = []
+
+        if not self.name in Cache:
+            Cache[self.name] = copy.deepcopy(self.initial_cache)
+        self.cache = Cache[self.name]
+    
+    @staticmethod
+    def generate_new_mail():
+        Handler.mails_count += 1
+        return "%d.%d.%d" % (time.time(), os.getpid(), Handler.mails_count)
+
+    @staticmethod
+    def create_maildir(dir):
+        os.mkdir(dir)
+        os.mkdir(os.path.join(dir, "tmp"))
+        os.mkdir(os.path.join(dir, "cur"))
+        os.mkdir(os.path.join(dir, "new"))
+    
+    @staticmethod
+    def url_get_param(url, param, default = None):
+        return urlparse.parse_qs(urlparse.urlparse(url).query).get(param, [default])[0]
+
+    def create_mail(self, content, subject = None, frm = None, date = None, maildir = None, **other_headers):
+        msg_id = self.generate_new_mail()
+        maildir = maildir or self.maildir
+        
+        headers = {}
+        if subject: headers['Subject'] = rfc2047_encode(subject)
+        if frm: headers['From'] = rfc2047_encode(frm)
+        if date: headers['Date'] = email.Utils.formatdate(date)
+        for h, val in other_headers.iteritems():
+            if val is not None:
+                headers["-".join(map(h.__class__.capitalize, h.split("_")))] = val
+        headers['Message-ID'] = "<%s@%s>" % (msg_id, socket.gethostname())
+        headers['Content-Transfer-Encoding'] = "binary"
+        
+        data = u"\n".join([u"%s: %s" % h for h in headers.iteritems()]) + u"\n\n" + content
+        filename = msg_id + ",S=%d" % len(data)
+        fd = open(os.path.join(maildir, "tmp", filename), "w+")
+        fd.write(data.encode('utf-8'))
+        fd.close()
+        self.to_rename.append([os.path.join(maildir, "tmp", filename),
+                               os.path.join(maildir, "cur", filename)])
+        
+        return headers['Message-ID']
+    
+    def flush(self, done = True):
+        safe_write(CACHE_FILE, yaml.dump(Cache))
+        for src, dst in self.to_rename:
+            os.rename(src, dst)
+        self.to_rename = []
+        if self.cb_done and done:
+            self.cb_done(self, True)
+    
+    def handle_error(self, reason):
+        if self.cb_done:
+            self.cb_done(self, False)
+    
+    def start(self):
+        pass
+    
+class FeedHandler(TwistedWebClient, Handler):
     def __init__(self, maildir, name, url):
         TwistedWebClient.__init__(self, url)
-        self.maildir = maildir
-        self.name = name
-        self.finished = None
+        Handler.__init__(self, maildir, name, url)
     
-    def process(self, data):
+    def start(self):
+        self.download()
+    
+    def handle_done(self, data):
         print self.name.encode('utf-8')
-        
-        feed = feedparser.parse(data)
-        to_rename = []
-        if not self.name in Cache:
-            Cache[self.name] = []
-        
-        for item in feed.entries:
+        for item in feedparser.parse(data).entries:
             published = item.get('published_parsed') or item.get('created_parsed') or item.get('updated_parsed', time.localtime())
             content = item.get('content')
             if content:
@@ -108,36 +203,148 @@ class FeedHandler(TwistedWebClient):
                 content = item.get('summary', '')
             item_id = item.get('id') or item.get('link') or (published + u":" + item.get('title', ''))
             item_id = item_id.encode('utf-8')
-            if item_id not in Cache[self.name]:
+            if item_id not in self.cache:
                 print (u"  %s" % item.title).encode('utf-8')
-                Cache[self.name].append(item_id)
                 
-                data  = "Subject: %s\n" % rfc2047_encode(item.get('title', ''))
-                data += "From: %s\n" % rfc2047_encode(item.get('author', ''))
-                data += "Date: %s\n" % email.Utils.formatdate(time.mktime(published))
-                data += "Content-Transfer-Encoding: 8bit\n"
-                data += "Content-Type: text/html; charset=utf-8\n\n"
-                data += content.encode('utf-8')
+                data = content.encode('utf-8')
                 if item.get('link'):
                     data += "<p><small><a href=\"%s\">View post</a></small></p>" % item.link.encode('utf-8')
                 
-                filename = generate_new_mail() + ",S=%d" % len(data)
-                fd = open(os.path.join(self.maildir, "tmp", filename), "w+")
-                fd.write(data)
-                fd.close()
-                to_rename.append([os.path.join(self.maildir, "tmp", filename),
-                                  os.path.join(self.maildir, "cur", filename)])
-
-        safe_write(CACHE_FILE, yaml.dump(Cache))
-        for src, dst in to_rename:
-            os.rename(src, dst)
-        if self.finished:
-            self.finished(self, True)
+                self.create_mail(data, content_type = "text/html; charset=utf-8",
+                    subject = item.get('title', ''), frm = item.get('author', ''), date = time.mktime(published))
+                self.cache.append(item_id)
+        self.flush()
     
-    def error(self, reason):
+    def handle_error(self, reason):
         print "Error while downloading %s: %s\n" (self.name, reason)
-        if self.finished:
-            self.finished(self, False)
+        Hander.handle_error(self, reason)
+
+IPBoard_CSS = "<style>.quotetop{padding:4px;margin-left:4em;margin-right:4em;border:1px solid black;border-bottom:0;} .quotemain{padding:4px;margin-right:4em;margin-left:4em;border:1px solid black;}</style>"
+
+class IPBoard(Handler):
+    initial_cache = {'forums': {}, 'topics': {}, 'posts': []}
+    
+    @staticmethod
+    def _parse_pagination(tree):
+        def greater_than(number, reference):
+            try:
+                number = int(number)
+                return number > reference
+            except:
+                return False
+    
+        page = tree.xpath("//span[@class='pagecurrent']/text()")
+        if page:
+            page = int(page[0])
+            otherpages = tree.xpath("//span[@class='pagelink']/a")
+            otherpages = [(op.get('href'), int(op.text)) for op in otherpages if greater_than(op.text, page)]
+        else:
+            page = 1
+            otherpages = []
+        return page, otherpages
+    
+    def _fetch_url(self, url, cb):
+        TwistedWebClient.do_get(url, cb, self.handle_error, cookies = self.cookies)
+        self.requests += 1
+    
+    def _request_end(self):
+        self.requests -= 1
+        if self.requests == 0:
+            print self.name
+            if self.cb_done:
+                self.cb_done(self, True)
+    
+    def start(self):
+        self.handled_newposts_pages = set()
+        self.handled_topicpages = set()
+        self.cookies = {}
+        self.requests = 0
+        
+        params = {"CODE": "01", "act": "Login"}
+        user, _, password = netrc.netrc().authenticators(urlparse.urlparse(self.url).netloc)
+        credentials = {"Privacy": "1", "UserName": user, "PassWord": password, "referer": self.url}
+        TwistedWebClient.do_post(self.url + "?" + urllib.urlencode(params),
+            credentials, self.handle_login, self.handle_error, cookies = self.cookies)
+    
+    def handle_login(self, data):
+        self._fetch_url(self.url + "?act=Search&CODE=getnew", self.handle_newposts)
+    
+    def handle_newposts(self, data):
+        tree = lxml.etree.HTML(data)
+        page, otherpages = self._parse_pagination(tree)
+        topics = tree.xpath("//a[contains(@href, 'view=getnewpost')]")
+        topics = [t.get('href') for t in topics]
+        self.handled_newposts_pages.add(page)
+        
+        for topic_url in topics:
+            self._fetch_url(topic_url, self.handle_topic)
+    
+        for pageurl, pagenum in otherpages:
+            if pagenum not in self.handled_newposts_pages:
+                self._fetch_url(pageurl, self.handle_newposts)
+        
+        self._request_end()
+        
+    def handle_topic(self, data):
+        tree = lxml.etree.HTML(data)
+        page, otherpages = self._parse_pagination(tree)
+        topicurl = tree.xpath("//span[@class='postdetails']/a/@href")[0]
+        topicid = int(self.url_get_param(topicurl, 'showtopic'))
+        topictitle = u"".join(list(tree.xpath('//div[@class="maintitle" and .//div[@id="topicmenu-options"]]//div')[0].itertext())).strip()
+        parentforums = tree.xpath("//div[@id='navstrip']/a[contains(@href, 'showforum')]")
+        parentforums = [(int(self.url_get_param(f.get('href'), 'showforum')), f.text) for f in parentforums]
+        parentforums.reverse()
+        self.handled_newposts_pages.add("%d:%d" % (topicid, page))
+        
+        for post in tree.xpath("//table[@class='ipbtable']"):
+            posturl = post.xpath(".//span[@class='postdetails']/a[contains(@href, 'view=findpost')]/@href")
+            if posturl:
+                posturl = posturl[0]
+                self.handle_post(parentforums, topicurl, topicid, topictitle, posturl, post)
+        
+        for pageurl, pagenum in otherpages:
+            if "%d:%d" % (topicid, pagenum) not in self.handled_topicpages:
+                self.handled_newposts_pages.add("%d:%d" % (topicid, pagenum))
+                self._fetch_url(pageurl, self.handle_topic)
+        
+        self._request_end()
+    
+    def _forum_maildir(self, forums_hierarchy):
+        if not forums_hierarchy:
+            return self.maildir
+        forumid, forumtitle = forums_hierarchy[0]
+        parent_forum_maildir = self._forum_maildir(forums_hierarchy[1:])
+        forum_maildir = "%s.%s" % (parent_forum_maildir, maildir_encode(forumtitle))
+        if not os.path.exists(forum_maildir):
+            self.create_maildir(forum_maildir)
+        self.cache['forums'][forumid] = forum_maildir
+        return forum_maildir
+    
+    def handle_post(self, parentforums, topicurl, topicid, topictitle, posturl, post):
+        postid = int(self.url_get_param(posturl, 'p'))
+        if not str(postid) in self.cache['posts']:
+            postdata = post.xpath(".//div[@id='post-%d']" % postid)[0]
+            postdata = lxml.etree.tostring(postdata)
+            postuser = "%s <>" % post.xpath("(.//td)[1]//a[contains(@href, 'showuser=')]")[0].text
+            postdate = "".join(post.xpath("(.//td)[2]//span[@class='postdetails']")[0].itertext()).strip()
+            if postdate.startswith(("today", "aujourd")):
+                postdate = int(mx.DateTime.DateTimeFrom(postdate.split(",")[-1]))
+            elif postdate.startswith(("yesterday", "hier")):
+                postdate = int(mx.DateTime.DateTimeFrom(postdate.split(",")[-1]) - mx.DateTime.oneDay)
+            else:
+                postdate = int(mx.DateTime.DateTimeFrom(postdate))
+            
+            ref = self.cache['topics'].get(str(topicid))
+            postdata = (u"<base href=\"%s\"/>\n" % htmlescape(self.url)) + IPBoard_CSS + postdata
+            postdata += u"<p><small><a href=\"%s\">View post</a></small></p>" % htmlescape(posturl)
+            
+            maildir = self._forum_maildir(parentforums)
+            msg_id = self.create_mail(postdata, subject = "Re: %s" % topictitle, frm = postuser, date = postdate,
+                content_type = "text/html; charset=utf-8", references = ref, in_reply_to = ref, maildir = maildir)
+            self.cache['posts'].append(str(postid))
+            if ref is None:
+                self.cache['topics'][str(topicid)] = "<%s>" % msg_id
+            self.flush(False)
 
 def config_entry_get_items(maildir, name, value):
     if isinstance(value, dict):
@@ -152,6 +359,10 @@ def config_entry_get_items(maildir, name, value):
             ret.extend(config_entry_get_items(child_maildir, child_name, child_value))
         return ret
     else:
+        if " " in value:
+            parts = value.split()
+            if parts[0] == "ipb":
+                return [IPBoard(maildir, name, parts[1])]
         return [FeedHandler(maildir, name, value)]
 
 def config_get_items():
@@ -164,7 +375,7 @@ if __name__ == "__main__":
             twisted.internet.reactor.stop()
 
     def item_done_callback_daemon(item, success):
-        twisted.internet.reactor.callLater(15*60, item.download)
+        twisted.internet.reactor.callLater(15*60, item.start)
 
     if len(sys.argv) > 1 and sys.argv[1] in ("-d", "--daemon"):
         item_done_callback = item_done_callback_daemon
@@ -174,7 +385,7 @@ if __name__ == "__main__":
     print "-[%s] Start-" % time.asctime()
     items = config_get_items()
     for item in items:
-        item.finished = item_done_callback
-        item.download()
+        item.cb_done = item_done_callback
+        item.start()
     twisted.internet.reactor.run()
     print "-[%s] End-" % time.asctime()
