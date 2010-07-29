@@ -19,8 +19,9 @@ This is a set of useful (at least for me) scripts:
  * random: print one of its argument
  * sci: a frontend to scite remote interface. sci foo.c:42 will open 
    foo.c and go to line 42
- * tcproxy: a generic TCP proxy to dump data exchanged between a client
-   and a server
+ * tcproxy: a generic SOCKS proxy to dump data exchanged between a client
+   and a server. To use it : run the server on port X (./tcproxy X) and then
+   socksify the application to use the proxy (tsocks wget http://google.fr)
  * wmii_systemload.c: a system load (CPU/mem/swap) for wmii2
  * mnt: command-line interface to udisks (aka devicekit-disks, the
    successor of hal)
