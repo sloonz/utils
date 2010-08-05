@@ -34,7 +34,6 @@ parser.add_option("-e", "--bframes", dest = "bframes", help = "B-frames boost", 
 parser.add_option("-v", "--mv", dest = "mv", help = "Motion vectors options", metavar = "MV")
 parser.add_option("-q", "--qcomp", dest = "qcomp", help = "Quantums compression (only for ABR)", metavar = "QCOMP")
 parser.add_option("-d", "--direct-pred", dest = "direct_pred", help = "Motion estimation predictor", metavar = "DP")
-parser.add_option("-j", "--fps", dest = "fps", help = "FPS", metavar = "FPS")
 parser.add_option("-i", "--trellis", dest = "trellis", help = "Trellis", metavar = "TRELLIS")
 parser.add_option("-o", "--extra-x264-options", dest = "vidopts", help = "Extra X.264 options", metavar = "VIDOPTS")
 parser.add_option("-y", "--only-pass", dest="pass_", help = "Only do pass N (ABR)", metavar = "PASS")
@@ -54,7 +53,6 @@ defaults = {
 	"mv": "partitions=all:8x8dct",
 	"qcomp": "0.8",
 	"direct_pred": "auto",
-	"fps": "24000/1001",
 	"trellis": "0",
 	"vidopts": "weight_b:b_pyramid=strict:mixed_refs:nofast_pskip",
 }
@@ -91,7 +89,7 @@ x264encopts = "subq=%(subq)s:frameref=%(frameref)s:me=%(me)s:%(mv)s:bframes=%(bf
 	"scenecut=%(scenecut)s:b_bias=%(bbias)s:direct_pred=%(direct_pred)s:trellis=%(trellis)s:" % options
 infile, outfile = args
 logfile = "encode-" + infile.replace(" ", "_").replace("/", "_") + ".2pass"
-mencoderopts = mencoder + [infile, "-o", outfile, "-ovc", "x264", "-passlogfile", logfile, "-ofps", options.fps]
+mencoderopts = mencoder + [infile, "-o", outfile, "-ovc", "x264", "-passlogfile", logfile]
 if options.extra_options:
 	mencoderopts = mencoderopts + options.extra_options.split(" ")
 
