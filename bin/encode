@@ -94,7 +94,7 @@ if options.extra_options:
 
 # Video encoding, constant quality
 if options.crf:
-	sys.exit(run(mencoderopts + ["-x264encopts", x264encopts + "crf=%s" % options.crf]))
+	sys.exit(run(mencoderopts + ["-nosound", "-x264encopts", x264encopts + "crf=%s" % options.crf]))
 
 # Video encoding, average bitrate
 pass_ = None
