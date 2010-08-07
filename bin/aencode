@@ -1,11 +1,16 @@
 #!/bin/sh
 
-aud="$1"
-vid="$2"
-out="$3"
+out="$1"
+aud="$2"
+vid="$3"
+sub="$4"
+
+if [ "$sub" == "" ] ; then
+	sub="-A -D $sub"
+fi
 
 ffmpeg -i "$aud" "$out.wav" &&
 aacplusenc "$out.wav" "$out.aac" 56 &&
-mkvmerge -o "$out" --aac-is-sbr 0 "$out.aac" -A "$vid" 
+mkvmerge -o "$out" --aac-is-sbr 0 "$out.aac" "$vid" $sub
 rm -f "$out.wav" "$out.aac"
 
