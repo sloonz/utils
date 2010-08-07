@@ -5,7 +5,7 @@ aud="$2"
 vid="$3"
 sub="$4"
 
-if [ "$sub" == "" ] ; then
+if [ "$sub" != "" ] ; then
 	sub="-A -D $sub"
 fi
 
