@@ -1,0 +1,6 @@
+#!/bin/sh
+
+inp="$1"
+out="$2"
+
+ffmpeg -i "$inp" -acodec libmp3lame -vcodec mpeg4 -ab 384k -b 5000k -r 24000/1001 -y "$out"
