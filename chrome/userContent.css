@@ -1,0 +1,29 @@
+.ushints_hint {
+	display: inline;
+	background-color: #b9ff00;
+	border: 2px solid #4a6600;
+	opacity: 0.6;
+	color: black;
+	font-size: 9px;
+	font-weight: bold;
+	line-height: 9px;
+	margin: 0px;
+	padding: 1px;
+	position: absolute;
+	z-index: 10000 !important;
+	text-decoration: none;
+	-moz-border-radius: 6px;
+	-webkit-border-radius: 6px;
+	-moz-transform: scale(1) rotate(0deg) translate(-6px,-5px);
+	-webkit-transform: scale(1) rotate(0deg) translate(-6px,-5px);
+}
+
+.ushints_sel_hint {
+	opacity: 1 !important;
+}
+
+@-moz-document domain(filestube.com) {
+	div {
+		height: auto !important;
+	}
+}

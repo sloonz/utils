@@ -46,6 +46,19 @@ This is a set of useful (at least for me) scripts:
    and then running scimake foo.c build
    The documentation is the code ;)
 
+There is also a set of userchrome.js scripts to put in your chrome/ folder
+for firefox :
+ * userScripts.uc.js: helper for other scripts
+ * hints.us.js: mouseless navigation (type "a" for selecting a link/form field, g
+   to follow a link, G to follow a link in a new tab)
+ * dlfp.us.js: add a toolbar to other pages of linuxfr
+ * restartFirefox.uc.js: restart firefox by pressing C-S-q
+ * google_left.us.js: remove the f*cking left bar on google searchs
+ * ws_apostrophe.us.js: change ' to ’ in OCR text (wikisource)
+ * ws_validate.us.js: press 'v' to validate a page (wikisource)
+
+Edit userChrome.js to load the scripts you need.
+
 == feeds.yml example ==
 
 IT:
