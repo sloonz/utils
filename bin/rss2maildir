@@ -102,7 +102,9 @@ class TwistedWebClient:
             twisted.internet.reactor.callLater(0, self.handle_done, source)
         
         def errback(error):
-            if error.check(twisted.internet.defer.TimeoutError) and self.tc < 3:
+            is_timeout = error.check(twisted.internet.defer.TimeoutError) or \
+                         error.check(twisted.internet.error.TCPTimedOutError)
+            if is_timeout and self.tc < 3:
                 self.tc += 1
                 self.download(False)
             else:
@@ -206,18 +208,17 @@ class FeedHandler(TwistedWebClient, Handler):
             if item_id not in self.cache:
                 print (u"  %s" % item.title).encode('utf-8')
                 
-                data = content.encode('utf-8')
                 if item.get('link'):
-                    data += "<p><small><a href=\"%s\">View post</a></small></p>" % item.link.encode('utf-8')
+                    content += u"<p><small><a href=\"%s\">View post</a></small></p>" % item.link
                 
-                self.create_mail(data, content_type = "text/html; charset=utf-8",
+                self.create_mail(content, content_type = "text/html; charset=utf-8",
                     subject = item.get('title', ''), frm = item.get('author', ''), date = time.mktime(published))
                 self.cache.append(item_id)
         self.flush()
     
     def handle_error(self, reason):
-        print "Error while downloading %s: %s\n" (self.name, reason)
-        Hander.handle_error(self, reason)
+        print "Error while downloading %s: %s\n" % (self.name, reason)
+        Handler.handle_error(self, reason)
 
 IPBoard_CSS = "<style>.quotetop{padding:4px;margin-left:4em;margin-right:4em;border:1px solid black;border-bottom:0;} .quotemain{padding:4px;margin-right:4em;margin-left:4em;border:1px solid black;}</style>"
 
