@@ -68,8 +68,6 @@ userChrome.import("restartFirefox.uc.js", "UChrm");
 userChrome.import("userScripts.uc.js", "UChrm");
 userChrome.import("dlfp.us.js", "UChrm");
 userChrome.import("hints.us.js", "UChrm");
-userChrome.import("ws_apostrophe.us.js", "UChrm");
-userChrome.import("ws_validate.us.js", "UChrm");
 userChrome.import("google_left.us.js", "UChrm");
 
 /* Desactivate Ctrl-Q */
