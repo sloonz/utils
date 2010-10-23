@@ -20,7 +20,7 @@ for f in glob.glob("/tmp/SciTE.*.in"):
 	try:
 		os.kill(int(pid), 0)
 		exists = True
-	except OSError, e:
+	except OSError as e:
 		exists = (e.errno == 1)
 	
 	if (((opts.list and opts.all) or (os.getuid() == os.stat(f).st_uid))) and exists:
@@ -28,7 +28,7 @@ for f in glob.glob("/tmp/SciTE.*.in"):
 
 # Handle --list
 if opts.list:
-	for pid in instances: print pid
+	for pid in instances: print(pid)
 	sys.exit(0)
 
 # Find instance to work with
@@ -62,16 +62,16 @@ for arg in args:
 # Run
 if instance:
 	if opts.verbose:
-		print "Using %s" % instance.name
+		print("Using %s" % instance.name)
 	for cmd in cmds:
 		if opts.verbose:
-			print "> %s" % cmd
+			print("> %s" % cmd)
 		instance.write("%s\n" % cmd)
 	instance.close()
 else:
 	shcmd = ["scite"]
 	shcmd.extend("-"+cmd for cmd in cmds)
 	if opts.verbose:
-		print "New instance: " + " ".join(shcmd)
+		print("New instance: " + " ".join(shcmd))
 	if opts.nofork or (not opts.nofork and os.fork() == 0):
 		os.execvp(shcmd[0], shcmd)
