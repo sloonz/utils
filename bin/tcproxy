@@ -5,10 +5,10 @@ import socket
 import struct
 import sys
 
-Normal='\x1b[0m'
-Bold='\x1b[01m'
-Blue='\x1b[34m'
-Red='\x1b[31m'
+Normal=b'\x1b[0m'
+Bold=b'\x1b[01m'
+Blue=b'\x1b[34m'
+Red=b'\x1b[31m'
 
 class IOManager(object):
     """ A central interface to select() """
@@ -81,8 +81,7 @@ class Proxy:
         self.client_socket.close()
         IOManager.instance().remove_r_channel(self.client_socket)
         IOManager.instance().remove_r_channel(self.server_socket)
-        print Normal
-        print Bold + "=[ CLOSING CONNECTION ]=" + Normal
+        sys.stdout.buffer.write(Normal + Bold + b"=[ CLOSING CONNECTION ]=" + Normal + b"\n")
     
     def _data_available(self, frm, to, color):
         buf = frm.recv(self.bufsize)
@@ -93,8 +92,8 @@ class Proxy:
         while len(buf) == self.bufsize:
             buf = frm.recv(self.bufsize)
             data += buf 
-        sys.stdout.write(color + data)
-        sys.stdout.flush()
+        sys.stdout.buffer.write(color + data)
+        sys.stdout.buffer.flush()
         to.send(data)
     
     def client_data_available(self):
@@ -105,22 +104,21 @@ class Proxy:
 
 def handle_socks_request():
     conn, _ = listening_socket.accept()
-    print Normal
-    print Bold + "=[ NEW CONNECTION ]=" + Normal
+    sys.stdout.buffer.write(Normal + Bold + b"=[ NEW CONNECTION ]=" + Normal + b"\n")
     
-    data = ""
+    data = b""
     while len(data) < 8:
         data += conn.recv(8-len(data))
     vn, cd, dstport, dstip = struct.unpack("!bbHI", data)
     dstip = socket.inet_ntoa(struct.pack("!I", dstip))
     
     if vn != 4:
-        print "Protocol error"
+        print("Protocol error")
         conn.close()
         return None
     if cd != 1:
-        print "Bad command"
-        conn.send(chr(0) + chr(91) + (chr(0) * 6))
+        print("Bad command")
+        conn.send(b'\0\x5b' + (b'\0' * 6))
         conn.close()
         return None
     data = conn.recv(1)
@@ -130,16 +128,16 @@ def handle_socks_request():
     conn2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         conn2.connect((dstip, dstport))
-    except Exception, e:
-        print "Error: %r" % e
-        conn.send(chr(0) + chr(91) + (chr(0) * 6))
+    except Exception as e:
+        print("Error: %r" % e)
+        conn.send(b'\0\x5b' + (b'\0' * 6))
         conn.close()
         return None
     
-    conn.send(chr(0) + chr(90) + (chr(0) * 6))
+    conn.send(b'\0\x5a' + (b'\0' * 6))
     Proxy(conn, conn2)
 
-print "Client->server is blue ; server->client is red"
+print("Client->server is blue ; server->client is red")
 
 # Parse args
 if ':' in sys.argv[1]:
