@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 
 import os, sys, os.path, optparse, subprocess
 
@@ -68,7 +68,7 @@ if options.profile:
 			break
 	
 	if prfile is None:
-		print "Profile file not found"
+		print("Profile file not found")
 		sys.exit(1)
 	
 	for line in open(prfile):
@@ -79,7 +79,7 @@ if options.profile:
 		if getattr(options, opt.strip()) is None:
 			setattr(options, opt.strip(), val.strip())
 
-for opt, val in defaults.iteritems():
+for opt, val in defaults.items():
 	if getattr(options, opt.strip()) is None:
 		setattr(options, opt.strip(), val.strip())
 
