@@ -74,11 +74,11 @@ def done():
 	args.insert(0, 'perl')
 
 def help(arg = None):
-	if arg: print >> sys.stderr, "Bad argument: %s" % arg
+	if arg: print("Bad argument: %s" % arg, file=sys.stderr)
 	if pren:
-		print >> sys.stderr, PREN_DOC
+		print(PREN_DOC, file=sys.stderr)
 	else:
-		print >> sys.stderr, REG_DOC
+		print(REG_DOC, file=sys.stderr)
 	sys.exit(arg != None)
 
 for arg in sys.argv[1:]:
