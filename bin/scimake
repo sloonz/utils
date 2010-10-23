@@ -10,12 +10,12 @@ class PkgConfigError(Exception):
 	pass
 
 def run(cmd, *args):
-	args = map(str, [cmd] + list(args))
+	args = list(map(str, [cmd] + list(args)))
 	p = subprocess.Popen(args, 0, args[0], subprocess.PIPE, subprocess.PIPE, subprocess.STDOUT)
 	p.stdin.close()
 	
 	if p.wait() != 0:
-		raise IOError, p.stdout.read().strip()
+		raise IOError(p.stdout.read().strip())
 	
 	return p.stdout.read().strip()
 
@@ -107,7 +107,7 @@ class Makefile(list):
 			fd.write('%s: %s\n\t%s\n\n' % rule)
 		fd.close()
 		
-		print "> make -f SciMakefile ",target
+		print("> make -f SciMakefile ",target)
 		os.execlp('make', 'make', '-f', 'SciMakefile', target)
 	
 	def _compile(self, source):
@@ -162,9 +162,9 @@ class Compiler:
 		try:
 			return run('pkg-config', '--' + type, *(src.get('pkg').split(" ")))
 		except OSError:
-			raise PkgConfigError, "pkg-config not found"
-		except IOError, e:
-			raise PkgConfigError, e
+			raise PkgConfigError("pkg-config not found")
+		except IOError as e:
+			raise PkgConfigError(e)
 	
 	@classmethod
 	def cflags(self, src):
