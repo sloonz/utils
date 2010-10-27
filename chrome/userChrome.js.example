@@ -64,18 +64,19 @@
 // Cr = Components.results;
 // Cu = Components.utils;
 
-userChrome.import("restartFirefox.uc.js", "UChrm");
-userChrome.import("userScripts.uc.js", "UChrm");
-userChrome.import("dlfp.us.js", "UChrm");
-userChrome.import("hints.us.js", "UChrm");
-userChrome.import("google_left.us.js", "UChrm");
+if(location == "chrome://browser/content/browser.xul") {
+    userChrome.import("restartFirefox.uc.js", "UChrm");
+    userChrome.import("userScripts.uc.js", "UChrm");
+    userChrome.import("userScripts", "UChrm");
 
-/* Desactivate Ctrl-Q */
-window.addEventListener('keypress',
-    function(evt) {
-        if(evt.ctrlKey && !evt.metaKey && !evt.altKey && !evt.shiftKey &&
-           evt.charCode && String.fromCharCode(evt.charCode) == 'q') {
-            evt.stopPropagation();
-            evt.preventDefault();
-        }
-    }, false);
+    /* Desactivate Ctrl-Q */
+    window.addEventListener('keypress',
+        function(evt) {
+            if(evt.ctrlKey && !evt.metaKey && !evt.altKey && !evt.shiftKey &&
+                evt.charCode && String.fromCharCode(evt.charCode) == 'q') {
+                evt.stopPropagation();
+                evt.preventDefault();
+            }
+         }, false);
+    }
+}
