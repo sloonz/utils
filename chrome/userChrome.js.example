@@ -65,6 +65,7 @@
 // Cu = Components.utils;
 
 if(location == "chrome://browser/content/browser.xul") {
+    userChrome.import("jquery.js", "UChrm");
     userChrome.import("restartFirefox.uc.js", "UChrm");
     userChrome.import("userScripts.uc.js", "UChrm");
     userChrome.import("userScripts", "UChrm");
@@ -78,5 +79,4 @@ if(location == "chrome://browser/content/browser.xul") {
                 evt.preventDefault();
             }
          }, false);
-    }
 }
