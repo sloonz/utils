@@ -172,27 +172,27 @@ func DumpCache() {
 	cache.dirty = false
 	cache.last_dump_req = 0
 
-	logger.Logf("Dumping cache to %s", cache.file)
+	logger.Printf("Dumping cache to %s", cache.file)
 	fd, err := os.Open(cache.file + ".new", os.O_WRONLY | os.O_CREAT, 0664)
 	if err != nil {
-		logger.Logf("Can't open cache file: %s", err.String())
+		logger.Printf("Can't open cache file: %s", err.String())
 		return
 	}
 	wr := bufio.NewWriter(fd)
 	
 	for req, entries := range cache.qr {
 		if _, err := fmt.Fprintf(wr, "BEGIN\t%s\t%d\n", req, len(entries)); err != nil {
-			logger.Logf("Can't write to cache file: %s", err.String())
+			logger.Printf("Can't write to cache file: %s", err.String())
 			return
 		}
 		for _, entry := range entries {
 			if _, err := fmt.Fprintf(wr, "%s\t%s\t%d\t%s\t%s\t%s\n", entry.section, entry.qname, entry.ttl, entry.qclass, entry.qtype, entry.data); err != nil {
-				logger.Logf("Can't write to cache file: %s", err.String())
+				logger.Printf("Can't write to cache file: %s", err.String())
 				return
 			}
 		}
 		if _, err := fmt.Fprintf(wr, "END\n\n"); err != nil {
-			logger.Logf("Can't write to cache file: %s", err.String())
+			logger.Printf("Can't write to cache file: %s", err.String())
 			return
 		}
 	}
@@ -209,7 +209,7 @@ func GetEntriesFromDig(req Query, rc *int) (entries chan *ReplyEntry, err os.Err
 	cmd, err := exec.Run(path, []string{path, "@" + dnsaddr, req.qname, req.qtype, req.qclass, "+nomultiline"},
 		os.Environ(), "/", exec.DevNull, exec.Pipe, exec.MergeWithStdout)
 	if err != nil {
-		logger.Logf("Error running dig: %s", err.String())
+		logger.Printf("Error running dig: %s", err.String())
 		entries = nil
 		return
 	}
@@ -240,7 +240,7 @@ func GetEntriesFromDig(req Query, rc *int) (entries chan *ReplyEntry, err os.Err
 		if rc != nil {
 			*rc = cmd_rc.WaitStatus.ExitStatus()
 			if *rc != 0 {
-				logger.Logf("dig exited with code %d", *rc)
+				logger.Printf("dig exited with code %d", *rc)
 			}
 		}
 		cmd.Close()
@@ -284,7 +284,7 @@ func ProcessQuery(out io.Writer, req Query) (close bool) {
 	var rc int
 	entries, err := GetEntriesFromDig(req, &rc)
 	if err != nil {
-		logger.Logf("Can't run dig: %s\n", err.String())
+		logger.Printf("Can't run dig: %s\n", err.String())
 		_, err := fmt.Fprintf(out, "FAIL\t%s\n", err.String())
 		return (GetError(err) == os.EPIPE)
 	}
@@ -335,7 +335,7 @@ func ServeClient(l net.Listener, c net.Conn) {
 			}
 		case "DNSADDR":
 			dnsaddr = parts[1]
-			logger.Logf("Setting DNS to %s", dnsaddr)
+			logger.Printf("Setting DNS to %s", dnsaddr)
 		case "QUIT":
 			DumpCache()
 			c.Close()
@@ -343,7 +343,7 @@ func ServeClient(l net.Listener, c net.Conn) {
 			os.Exit(0)
 			return
 		default:
-			logger.Logf("WARN: unknown query from powerdns: %s", line)
+			logger.Printf("WARN: unknown query from powerdns: %s", line)
 		}
 	}
 	c.Close()
@@ -380,11 +380,11 @@ func PopulateCache(fd io.Reader) {
 					ttl: ttl, data: parts[4], section: line[0:2]}
 				reply_idx++
 			} else {
-				logger.Logf("WARNING: %s:%d: ignoring cache reply line: %s", cache.file, linecount, line)
+				logger.Printf("WARNING: %s:%d: ignoring cache reply line: %s", cache.file, linecount, line)
 			}
 		}
 	}
-	logger.Logf("Read %d lines from cache file", linecount)
+	logger.Printf("Read %d lines from cache file", linecount)
 }
 
 // Create a listener listening on unix socket path
@@ -399,7 +399,7 @@ func CreateListener(path string) net.Listener {
 				ch := ReadLines(conn)
 				line := <- ch
 				if line == "PONG" {
-					logger.Log("Instance already running, exiting")
+					logger.Print("Instance already running, exiting")
 					conn.Close()
 					os.Exit(1)
 				}
@@ -409,12 +409,12 @@ func CreateListener(path string) net.Listener {
 		// Else, remove the socket file and retry
 		err = os.Remove(path)
 		if err != nil {
-			logger.Logf("ERROR: Can't remove old socket (%s), exiting", err.String())
+			logger.Printf("ERROR: Can't remove old socket (%s), exiting", err.String())
 		}
 		listener, err = net.Listen("unix", path)
 	}
 	if err != nil {
-		logger.Logf("ERROR: Can't open socket: %s", err.String())
+		logger.Printf("ERROR: Can't open socket: %s", err.String())
 		os.Exit(1)
 	}
 	return listener
@@ -431,27 +431,27 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Cannot open log file: %s\n", err.String())
 		os.Exit(1)
 	}
-	logger = log.New(logger_fd, nil, "", log.Lok | log.Ldate | log.Ltime)
+	logger = log.New(logger_fd, "", log.Ldate | log.Ltime)
 	
 	// Init cache
 	cache.last_dump_req = 0
 	cache.file = CACHEFILE
 	cache.dirty = false
 	
-	logger.Log("Running new instance")
+	logger.Print("Running new instance")
 	
 	// Read cache DB
 	fd, err := os.Open(cache.file, os.O_RDONLY, 0)
 	if err != nil {
 		if GetError(err) != os.ENOENT {
-			logger.Logf("Error opening cache file: %d %s", err, err.String())
+			logger.Printf("Error opening cache file: %d %s", err, err.String())
 		}
 	}
 	if err == nil {
 		PopulateCache(fd)
 		fd.Close()
 	} else {
-		logger.Log("No cache file")
+		logger.Print("No cache file")
 	}
 	
 	// Open socket
@@ -470,24 +470,24 @@ func main() {
 			if strings.HasPrefix(sig.String(), "SIGWINCH") || strings.HasPrefix(sig.String(), "SIGCHLD") {
 				continue
 			}
-			logger.Logf("Signal: %s", sig.String())
+			logger.Printf("Signal: %s", sig.String())
 			cache.command <- CACHE_CMD_EXIT
 			listener.Close()
 		}
 	}()
 	
 	// Process queries
-	logger.Log("Ready")
+	logger.Print("Ready")
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			logger.Logf("Error while accepting connection: %s", err.String())
+			logger.Printf("Error while accepting connection: %s", err.String())
 			continue
 		}
 		go ServeClient(listener, conn)
 	}
 	
-	logger.Log("terminating")
+	logger.Print("terminating")
 }
 
 // TODO: 
