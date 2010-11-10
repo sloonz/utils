@@ -1,6 +1,6 @@
 config =
-    defaultExpr: 'a:not(:empty)[href],input[type="button"],input[type="submit"]'
-    formExpr: 'textarea,select,input'
+    defaultExpr: "//a[@href or @onclick or @oncommand] | //input[@type='button' or @type='submit' or @type='radio' or @type='checkbox']"
+    formExpr: "//input[@type='text' or not(@type) or @type='password'] | //textarea | //select"
     keys: 'abcdefghijklmnopqrstuvwxyz'
     hintClass: 'ushints_hint'
     selectedHintClass: 'ushints_hint ushints_sel_hint'
@@ -53,6 +53,12 @@ numberToString = (number)->
 isVisible = (element, vcoords)->
     return rectIntersect(innerRect(element), vcoords) and element.css('visibility') != 'hidden'
 
+xpath = (expr, document)->
+    elems = []
+    res = document.evaluate(expr, document, null, XPathResult.ANY_TYPE, null)
+    elems.push elem while elem = res.iterateNext()
+    return elems
+
 class UsHints
     constructor: (@document)->
         @container = null
@@ -70,7 +76,7 @@ class UsHints
         win = @document.defaultView
         vcoords = [win.pageYOffset, win.pageYOffset + win.innerHeight,
             win.pageXOffset, win.pageXOffset + win.innerWidth]
-        elems = (elem for elem in $(expr, @document).filter(':visible') when isVisible($(elem), vcoords))
+        elems = (elem for elem in $(xpath(expr, @document)).filter(':visible') when isVisible($(elem), vcoords))
 
         # How many letters do we need ?
         curHint = [0]
@@ -171,4 +177,4 @@ userScripts.register
 
         bindCommand "f:", config.defaultExpr, callbacks.simulateClick
         bindCommand "F:", config.defaultExpr, callbacks.simulateCtrlClick
-        bindCommand "a:", "#{config.defaultExpr},#{config.formExpr}", callbacks.activate
+        bindCommand "a:", "#{config.defaultExpr}|#{config.formExpr}", callbacks.activate
