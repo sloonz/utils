@@ -83,9 +83,12 @@ for opt, val in defaults.items():
 	if getattr(options, opt.strip()) is None:
 		setattr(options, opt.strip(), val.strip())
 
-options.__getitem__ = lambda x: getattr(options, x)
+class AttrDict:
+	def __init__(self, obj): self.obj = obj
+	def __getitem__(self, x): return getattr(self.obj, x)
+
 x264encopts = "subq=%(subq)s:frameref=%(frameref)s:me=%(me)s:%(mv)s:bframes=%(bframes)s:%(vidopts)s:qcomp=%(qcomp)s:keyint=%(keyint)s:" \
-	"scenecut=%(scenecut)s:b_bias=%(bbias)s:direct_pred=%(direct_pred)s:trellis=%(trellis)s:" % options
+	"scenecut=%(scenecut)s:b_bias=%(bbias)s:direct_pred=%(direct_pred)s:trellis=%(trellis)s:" % AttrDict(options)
 infile, outfile = args
 logfile = "encode-" + infile.replace(" ", "_").replace("/", "_") + ".2pass"
 mencoderopts = mencoder + [infile, "-o", outfile, "-ovc", "x264", "-passlogfile", logfile]
