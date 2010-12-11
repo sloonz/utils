@@ -1,0 +1,115 @@
+#!/bin/zsh
+
+# Defaults
+root="$HOME/vm"
+root_type="immutable"
+cdrom="empty"
+cdrom2="empty"
+image="empty"
+vm="xp"
+date="2010-02-22T22:00:00"
+snapshot=
+take=
+
+# Parse args
+for arg in $* ; do
+	param=$(echo $arg | cut -d= -f2-)
+	if [[ $arg == -cdrom=* ]] ; then
+		cdrom=$param
+	elif [[ $arg == -cdrom2=* ]] ; then
+		cdrom2=$param
+	elif [[ $arg == -take=* ]] ; then
+		take=$param
+	elif [[ $arg == -snapshot=* ]] ; then
+		snapshot=$param
+	elif [[ $arg == -vm=* ]] ; then
+		vm=$param
+	elif [[ $arg == -date=* ]] ; then
+		date=$param
+	elif [[ $arg == -root-type=* ]] ; then
+		root_type=$param
+	elif [[ $arg == -image=* ]] ; then
+		image=$param
+	else
+		echo "Usage: $0 [-date=$date] [-vm=$vm] [-image=$image] [-cdrom=$cdrom] [-cdrom2=$cdrom2]"
+		echo "          [-root-type=${root_type}] [-snapshot=$snapshot] [-take=$take]"
+		exit 0
+	fi
+done
+
+if [[ -n $take ]] ; then
+	# Take a snapshot
+	echo "Taking snapshot $take"
+	exec VBoxManage -q snapshot $vm take $take 
+fi
+
+if [[ -n $snapshot ]] ; then
+	# Restore shapshot
+	echo "Retoring snapshot $snapshot"
+	VBoxManage -q snapshot $vm restore $snapshot
+else
+	if [[ $root_type != $(VBoxManage -q showhdinfo "$root/$vm".vdi | grep Type: | awk '{print $2}') ]] ; then
+		if [[ $root_type != normal && $root_type != writethrough && $root_type != immutable ]] ; then
+			echo "Valid root types are : writethrough, normal, immutable"
+			exit 1
+		fi
+		
+		echo "Changing root write type to \"${root_type}\""
+		
+		# Detach root image
+		VBoxManage -q storageattach $vm --storagectl IDE0 --port 0 --device 0 --type hdd --medium none &&
+		
+		# Delete all snapshots of root image
+		rootuuid=$(VBoxManage showhdinfo "$root/$vm".vdi | awk '$1 == "UUID:" { print $2 }')
+		[ "$rootuuid" = "" ] && exit 1
+		VBoxManage list hdds |
+			grep '^\(UUID:\|Parent UUID:\|$\)' |
+			perl -e '$/="\n\n";while(<>) { /UUID:\s*(\S+)\s+Parent UUID:\s*(\S+)/; print "$1 $2\n" }' |
+			rootuuid=$rootuuid awk '$2 == ENVIRON["rootuuid"] { print $1 }' |
+			while read id; do echo "Deleting $id"; VBoxManage -q closemedium disk $id --delete || exit 1; done
+		
+		# Set mode and reattach image
+		VBoxManage -q modifyhd "$root/$vm".vdi --type $root_type && 
+		VBoxManage -q storageattach $vm --storagectl IDE0 --port 0 --device 0 --type hdd --medium "$root/$vm".vdi || exit 1
+	fi
+	
+	# Find image & cdrom path
+	if [[ ! -f $cdrom ]] ; then
+		if [[ $cdrom == "empty" ]] ; then
+			cdrom="emptydrive"
+		else
+			cdrom="$root/cdroms/$cdrom.iso"
+		fi
+	fi
+
+	if [[ ! -f $cdrom2 ]] ; then
+		if [[ $cdrom2 == "empty" ]] ; then
+			cdrom2="emptydrive"
+		else
+			cdrom2="$root/cdroms/$cdrom2.iso"
+		fi
+	fi
+
+	if [[ ! -f $image ]] ; then
+		image="$root/images/$image.vdi"
+	fi
+
+	# Setup Cdroms & HDD
+	# First IDE master is the OS
+	echo "HDD 1: $image"
+	echo "DVD 0: $cdrom"
+	echo "DVD 1: $cdrom2"
+	VBoxManage -q storageattach $vm --storagectl IDE0 --port 0 --device 1 --type dvddrive --medium "$cdrom" &&
+	VBoxManage -q storageattach $vm --storagectl IDE0 --port 1 --device 0 --type hdd --medium "$image" &&
+	VBoxManage -q storageattach $vm --storagectl IDE0 --port 1 --device 1 --type dvddrive --medium "$cdrom2" || exit 1
+
+	# Change BIOS clock
+	echo "Setting BIOS clock to $date"
+	date_secs=$(date -d$date +%s)
+	now_secs=$(date +%s)
+	delta_msec=$(expr \( $date_secs - $now_secs \) \* 1000)
+	VBoxManage -q modifyvm $vm --biossystemtimeoffset $delta_msec || exit 1
+fi
+
+echo
+exec VBoxSDL --nograbonclick --startvm $vm

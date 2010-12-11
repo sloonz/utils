@@ -38,6 +38,7 @@ This is a set of useful (at least for me) scripts:
      dnsbackend.go: the main process, written in Google Go
      dnsbackend.py: bridge betweeen the main process and unbound
      dnsbackend.rc: ArchLinux start script for the main process
+     dhclient-enter-hoosk: enter hooks for dhclient
  * scimake is a simple makefile generator intended for really small 
    projects (in facts, more for small tests). It works by adding a 
    comment in the head of the file to compile, e.g.
@@ -47,6 +48,10 @@ This is a set of useful (at least for me) scripts:
    The documentation is the code ;)
  * him: a set of scripts for image hashing. Documentation is the code.
  * scan: a simple interface to sane to create DjVu files
+ * bank-mailer: a simple interface to weboob to send by mails all operations
+   on bank account
+ * runvb: simple script to manage multiple VirtualBox disk images
+ * suspend: wait 5 seconds and then suspend to RAM
 
 There is also a set of userchrome.js scripts to put in your chrome/ folder
 for firefox :
