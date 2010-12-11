@@ -1,0 +1,21 @@
+#/bin/sh
+
+# Usage: exports environnment variables $action and $file
+# Use environnment variables QIV_ACTION (all actions), QIV_ACTION1 (used when $action = 1)... QIV_ACTION9
+# do eval $QIV_ACTION (and/or QIV_ACTION1...)
+#
+# examples: QIV_ACTION='echo $action $file' qiv ...
+#           QIV_ACTION1='rm -f -- "$file"' qiv ...
+#           QIV_ACTION2='ls -l -- "$file"' qiv ...
+
+action="$1"
+file="$2"
+
+for i in $(seq 0 9) ; do
+	_action=$(eval "echo \$QIV_ACTION$i")
+	if [ "$i" = "$action" ] ; then
+		[ -n "$_action" ] && eval $_action
+	fi
+done
+
+[ -n "$QIV_ACTION" ] && eval $QIV_ACTION

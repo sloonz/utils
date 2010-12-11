@@ -45,6 +45,8 @@ This is a set of useful (at least for me) scripts:
     // ~ depends: bar.c
    and then running scimake foo.c build
    The documentation is the code ;)
+ * him: a set of scripts for image hashing. Documentation is the code.
+ * scan: a simple interface to sane to create DjVu files
 
 There is also a set of userchrome.js scripts to put in your chrome/ folder
 for firefox :

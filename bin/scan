@@ -1,0 +1,252 @@
+#!/usr/bin/python2
+
+import gtk
+import gobject
+import subprocess
+import user
+import re
+import sys
+import os
+import threading
+import tempfile
+
+gobject.threads_init()
+
+temp_files = []
+current_image = {
+	'file': None,
+	'pixbuf': None,
+	'zoom': None
+}
+
+class ProgressDialog(gtk.Dialog):
+	def __init__(self, title, parent, pulse_text):
+		def pulse():
+			if self.do_pulse:
+				self.progress.pulse()
+			return self.do_pulse
+		
+		gtk.Dialog.__init__(self, title, parent, gtk.DIALOG_MODAL|gtk.DIALOG_NO_SEPARATOR)
+		self.progress = gtk.ProgressBar()
+		self.progress.set_text(pulse_text)
+		self.vbox.pack_start(self.progress, True, True)
+		self.do_pulse = True
+		self.timer = gobject.timeout_add(100, pulse)
+	
+	def run(self):
+		self.show_all()
+		gtk.Dialog.run(self)
+	
+	def set_progress(self, progress):
+		if self.do_pulse:
+			self.do_pulse = False
+			gobject.source_remove(self.timer)
+		self.progress.set_fraction(progress/100.)
+
+def clean_temp_files():
+	for temp_file in temp_files:
+		temp_file.close()
+
+def find_scanner():
+	sp = subprocess.Popen(["scanimage", "-f", "%d%n"], stdout = subprocess.PIPE, stdin = subprocess.PIPE)
+	sp.stdin.close()
+	res = None
+	for line in sp.stdout:
+		if not line.startswith('v4l:'):
+			res = line.strip()
+	if sp.wait() != 0:
+		res = None
+	return res
+
+def lines(fd):
+	data = fd.read(1)
+	line = ""
+	while data:
+		line += data
+		if data == "\r" or data == "\n":
+			yield line
+			line = ""
+		data = fd.read(1)
+	return
+
+pnmfiles = []
+def scan_page(image, progress_dialog):
+	def scan_done():
+		temp_files.append(output_djvu_file)
+		current_image['file'] = output_djvu_file.name
+		current_image['pixbuf'] = gtk.gdk.pixbuf_new_from_file(output_pnm_file.name)
+		current_image['zoom'] = 1
+		zoom_one(image)
+		progress_dialog.hide()
+		output_pnm_file.close()
+	
+	output_pnm_file = tempfile.NamedTemporaryFile(prefix = 'scan', suffix = ".pnm")
+	output_djvu_file = tempfile.NamedTemporaryFile(prefix = 'scan', suffix = ".djvu")
+	
+	# Scan & trim
+	sp = subprocess.Popen(["scanimage", "-d", scanner, "-vp"], stdout = subprocess.PIPE, stdin = subprocess.PIPE, stderr = subprocess.PIPE)
+	sp_convert = subprocess.Popen(["convert", "-trim", "-resize", "40%", "-", output_pnm_file.name], stdin = sp.stdout)
+	sp.stdin.close()
+	for line in lines(sp.stderr):
+		sys.stdout.write(line)
+		sys.stdout.flush()
+		progress = re.findall(r"Progress: (\d+(?:\.\d+)?)%", line)
+		if progress:
+			do_pulse = False
+			gobject.idle_add(progress_dialog.set_progress, float(progress[0]))
+	sp.wait()
+	sp_convert.wait()
+	
+	# Convert to DjVu
+	subprocess.Popen(["c44", output_pnm_file.name, output_djvu_file.name]).wait()
+	
+	gobject.idle_add(scan_done)
+
+def zoom_to(image, zoom_level):
+	current_image['zoom'] = zoom_level
+	w, h = current_image['pixbuf'].get_width(), current_image['pixbuf'].get_height()
+	nw = int(w * zoom_level)
+	nh = int(h * zoom_level)
+	if zoom_level != 1:
+		image.set_from_pixbuf(current_image['pixbuf'].scale_simple(nw, nh, gtk.gdk.INTERP_BILINEAR))
+	else:
+		image.set_from_pixbuf(current_image['pixbuf'])
+
+def zoom_in(image):
+	zoom_to(image, current_image['zoom'] + 0.1)
+
+def zoom_out(image):
+	print(current_image['zoom'])
+	if current_image['zoom'] >= 0.2:
+		zoom_to(image, current_image['zoom'] - 0.1)
+
+def zoom_one(image):
+	zoom_to(image, 1)
+
+def zoom_to_window(image):
+	_, _, ww, wh = image.window.get_visible_region().get_clipbox()
+	ww -= 5
+	wh -= 5
+	iw, ih = current_image['pixbuf'].get_width(), current_image['pixbuf'].get_height()
+	if iw > ww:
+		zoom = float(ww) / float(iw)
+		if ih * zoom > wh:
+			zoom = float(wh) / float(ih)
+		zoom_to(image, zoom)
+
+def open_djview(path):
+	if not path: 
+		return
+	if not path.endswith('.djvu'):
+		path += ".djvu"
+	sp = subprocess.Popen(["djview", path])
+	threading.Thread(target = sp.wait)
+
+def save_to(path):
+	if not path: 
+		return
+	if not path.endswith('.djvu'):
+		path += ".djvu"
+	if os.path.exists(path):
+		rc = subprocess.Popen(["djvm", "-i", path, current_image['file']]).wait()
+		message = "Page appended to %s" % path
+	else:
+		rc = subprocess.Popen(["cp", "-i", "--", current_image['file'], path]).wait()
+		message = "File saved to %s" % path
+	if rc != 0:
+		message = "Error"
+	d = gtk.MessageDialog(win, gtk.DIALOG_MODAL, gtk.MESSAGE_INFO, gtk.BUTTONS_OK, message)
+	d.show_all()
+	d.run()
+	d.hide()
+
+def create_gui():
+	def on_zoom_in_clicked(*args):
+		zoom_in(im)
+	def on_zoom_out_clicked(*args):
+		zoom_out(im)
+	def on_zoom_one_clicked(*args):
+		zoom_one(im)
+	def on_zoom_to_window_clicked(*args):
+		zoom_to_window(im)
+	def on_scan_button_clicked(*args):
+		progress_dialog = ProgressDialog("Scan progress", win, "")
+		threading.Thread(target = scan_page, args = [im, progress_dialog]).start()
+		progress_dialog.run()
+	def on_open_button_clicked(*args):
+		open_djview(fc.get_file().get_path())
+	def on_save_button_clicked(*args):
+		gobject.idle_add(save_to, fc.get_file().get_path())
+	
+	win = gtk.Window()
+	win.set_title("Scan")
+	vbox = gtk.VBox()
+	win.add(vbox)
+	win.connect("destroy", lambda _: gtk.main_quit())
+	
+	sc = gtk.ScrolledWindow()
+	im = gtk.Image()
+	sc.add_with_viewport(im)
+	sc.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+	
+	fc = gtk.FileChooserWidget(gtk.FILE_CHOOSER_ACTION_SAVE)
+	fc.set_current_folder_uri("file://" + os.path.join(user.home, "paperasse"))
+	fc.connect("file-activated", on_save_button_clicked)
+	
+	btn_zoom_in = gtk.Button()
+	btn_zoom_out = gtk.Button()
+	btn_zoom_one = gtk.Button()
+	btn_zoom_to_window = gtk.Button()
+	btn_zoom_in.set_image(gtk.image_new_from_stock(gtk.STOCK_ZOOM_IN, gtk.ICON_SIZE_BUTTON))
+	btn_zoom_out.set_image(gtk.image_new_from_stock(gtk.STOCK_ZOOM_OUT, gtk.ICON_SIZE_BUTTON))
+	btn_zoom_one.set_image(gtk.image_new_from_stock(gtk.STOCK_ZOOM_100, gtk.ICON_SIZE_BUTTON))
+	btn_zoom_to_window.set_image(gtk.image_new_from_stock(gtk.STOCK_ZOOM_FIT, gtk.ICON_SIZE_BUTTON))
+	btn_zoom_in.connect("clicked", on_zoom_in_clicked)
+	btn_zoom_out.connect("clicked", on_zoom_out_clicked)
+	btn_zoom_one.connect("clicked", on_zoom_one_clicked)
+	btn_zoom_to_window.connect("clicked", on_zoom_to_window_clicked)
+	hbb1 = gtk.HButtonBox()
+	hbb1.pack_start(btn_zoom_in, True, False)
+	hbb1.pack_start(btn_zoom_out, True, False)
+	hbb1.pack_start(btn_zoom_one, True, False)
+	hbb1.pack_start(btn_zoom_to_window, True, False)
+	hbb1.set_layout(gtk.BUTTONBOX_START)
+	
+	btn_scan = gtk.Button("Scan")
+	btn_save = gtk.Button(stock = gtk.STOCK_SAVE)
+	btn_open = gtk.Button(stock = gtk.STOCK_OPEN)
+	btn_scan.connect("clicked", on_scan_button_clicked)
+	btn_save.connect("clicked", on_save_button_clicked)
+	btn_open.connect("clicked", on_open_button_clicked)
+	hbb2 = gtk.HButtonBox()
+	hbb2.pack_start(btn_scan, True, False)
+	hbb2.pack_start(btn_save, True, False)
+	hbb2.pack_start(btn_open, True, False)
+	hbb2.set_layout(gtk.BUTTONBOX_END)
+	
+	hb = gtk.HBox(True)
+	hb.pack_start(hbb1, True, True)
+	hb.pack_start(hbb2, True, True)
+	
+	paned = gtk.VPaned()
+	paned.add1(fc)
+	paned.add2(sc)
+	vbox.pack_start(paned, True, True, 0)
+	vbox.pack_start(hb, False, True, 0)
+	win.show_all()
+	
+	return win
+
+def find_scanner_task():
+	def do_find_scanner():
+		global scanner
+		scanner = find_scanner()
+		gobject.idle_add(dialog.hide)
+	dialog = ProgressDialog("Scanner", win, "Searching scanner...")
+	threading.Thread(target = do_find_scanner).start()
+	dialog.run()
+
+gobject.idle_add(find_scanner_task)
+win = create_gui()
+gtk.main()
+clean_temp_files()
