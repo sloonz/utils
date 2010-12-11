@@ -48,10 +48,14 @@ This is a set of useful (at least for me) scripts:
    The documentation is the code ;)
  * him: a set of scripts for image hashing. Documentation is the code.
  * scan: a simple interface to sane to create DjVu files
- * bank-mailer: a simple interface to weboob to send by mails all operations
-   on bank account
+ * bank-mailer: a simple interface to weboob to send by mails all
+   operations on bank account
  * runvb: simple script to manage multiple VirtualBox disk images
  * suspend: wait 5 seconds and then suspend to RAM
+ * proxy: a HTTP proxy which pass its queries to a PHProxy. Usage:
+     proxy -a(proxy name)
+   The chosen proxy is the first matching (as substring) (proxy
+   name). There are several predefined, you can check in the code
 
 There is also a set of userchrome.js scripts to put in your chrome/ folder
 for firefox :
