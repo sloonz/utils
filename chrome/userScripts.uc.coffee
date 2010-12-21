@@ -36,7 +36,7 @@ this.userScripts =
         $.merge(includes, (userScripts.stringToRegexp inc for inc in script.includes)) if script.includes?
         $.merge(excludes, (userScripts.stringToRegexp exc for exc in script.excludes)) if script.excludes?
         includes.push script.rinclude if script.rinclude?
-        excludes.push script.rexculde if script.rexclude?
+        excludes.push script.rexclude if script.rexclude?
         $.merge(includes, script.rincludes) if script.rincludes?
         $.merge(excludes, script.rexcludes) if script.rexcludes?
         
