@@ -147,7 +147,7 @@ func main() {
 
 	err := cache.load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: can't read cache: %s\n", err.String))
+		fmt.Fprintf(os.Stderr, "Warning: can't read cache: %s\n", err.String())
 	}
 
 	err = process(url)
