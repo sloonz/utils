@@ -6,7 +6,7 @@
 # presented to you with qiv; then press 0 for a list of actions.
 # You will need qiv and qiv-command in your PATH
 
-import imdb, Image, sys, os, subprocess
+import imdb, sys, os, subprocess
 
 def echop(p, file, i, total):
     l = str(len(str(total)))
@@ -19,10 +19,6 @@ def syslp(cmd, *args):
     if os.fork() == 0:
         os.execlp(cmd, cmd, *args)
     return os.wait()[1]
-
-def backtick(*args):
-    sp = subprocess.Popen(args, stdout = subprocess.PIPE)
-    return sp.communicate()[0]
 
 def process(db, file):
     # Find output filename
@@ -37,7 +33,7 @@ def process(db, file):
     
     # insert copy in DB,
     try:
-        db.insert(Image.open(out), out)
+        db.insert(out)
     except Exception as e:
         print("Can't insert %s: %s" % (file, e), file=sys.stderr)
         return False
@@ -95,9 +91,8 @@ if opts.get('delete') or opts.get('append') or opts.get('replace'):
 problematics = []
 for i, file in enumerate(args):
     echop(1, file, i, len(args))
-    im = Image.open(file)
-    if any(db.searchImage(im)):
-        print("DUPS [%s]" % ", ".join(x[1] for x in db.searchImage(im)))
+    if any(db.search(imdb.hash(file))):
+        print("DUPS [%s]" % ", ".join(x[1] for x in db.search(imdb.hash(file))))
         problematics.append(file)
     else:
         if process(db, file):
@@ -109,8 +104,7 @@ for i, file in enumerate(args):
 os.environ['QIV_ACTION0'] = "echo -e '1 = delete\\n2 = append\\n3 = replace this DB image by new image'"
 for i, file in enumerate(problematics):
     echop(2, file, i, len(problematics))
-    im = Image.open(file)
-    dups = [x[1] for x in db.searchImage(im)]
+    dups = [x[1] for x in db.search(imdb.hash(file))]
     
     # Check that duplicates are still here
     if not dups:

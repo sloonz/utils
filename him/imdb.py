@@ -4,60 +4,59 @@
 
 Using the fact that
 
- d(a,b) < x => abs(norm(a) - norm(b)) < x (reverse triangle inequality)
+    d(a,b) < x => abs(norm(a) - norm(b)) < x (reverse triangle inequality)
 
 to efficiently find duplicates of an image in a large database. Indeed,
 
 abs(norm(a) - norm(b)) < x <=> 
- norm(b) - x < norm(a) < norm(b) + x
+    norm(b) - x < norm(a) < norm(b) + x
 
 And since we have norm(*) > 0, we can conclude:
 
- d(a,b) < x => max(0, norm(b) - x) < norm(a) < norm(b) + x
+    d(a,b) < x => max(0, norm(b) - x) < norm(a) < norm(b) + x
 
 So, when searching for all hashes b that verify d(a,b) < x, we can safely
 compute d(a,b) only for hash with such a norm.
+
+We have a similar result for hamming norm/distance too (p being hamming weight/norm) :
+
+    p(a&b) < p(b) (or -p(b) < -p(a&b))
+    p(a|b) = p(a) + p(b) - p(a&b)
+    p(a^b) = p(a|b) - p(a&b) = p(a) + p(b) - 2*p(a&b)
+
+    p(a^b) < x => p(a) < x - p(b) + 2*p(a&b) < x + p(b)
+
+
+    p(a^b) < x => p(a)+p(b)-2*p(a&b) < x => p(b)-p(a) < x =>
+    p(a) > p(b) - x
 """
 
-import imhash, Image, ImageEnhance, sys, sqlite3
+import sys, sqlite3, base64, subprocess
 
-method = imhash.DS
-kwargs = {
-    'size': 96,
-    'norm': 1,
-    'downsample_method': 1
-}
-threshold = 67
-whitethreshold = 50
-maxcontrast = 128
-
-HNORMAL = 0
-HENHANCED = 1
-HFAILED = 2
-HSTATUS = {HNORMAL: 'normal',
-    HENHANCED: 'enhanced',
-    HFAILED: 'failed'}
+threshold = 150
 
 class DuplicateError(Exception):
     pass
 
+def _hamming_weight(x):
+    n = 0
+    while x:
+        n += 1
+        x &= x-1
+    return n
+
 def hash(image):
-    w = Image.new('L', image.size).point(lambda x: 0xff)
-    hw = method.hash(w, **kwargs)
-    hi = method.hash(image, **kwargs)
-    ci = ImageEnhance.Contrast(image)
-    
-    n = 1
-    while method.distance(hw, hi) < whitethreshold and n <= maxcontrast:
-        n *= 2
-        hi = method.hash(ci.enhance(n), **kwargs)
-    
-    if method.distance(hw, hi) < whitethreshold:
-        return HFAILED, None
-    elif n > 1:
-        return HENHANCED, hi
-    else:
-        return HNORMAL, hi
+    b64h = subprocess.Popen(["imhash", image], stdout = subprocess.PIPE).communicate()[0]
+    return base64.b64decode(b64h)
+
+def norm(h):
+    return sum(map(_hamming_weight, h))
+
+def distance(h1, h2):
+    d = 0
+    for x,y in zip(h1, h2):
+        d += norm([x^y])
+    return d
 
 class ImagesDB:
     def __init__(self, file = '.images.db'):
@@ -65,35 +64,21 @@ class ImagesDB:
         self.cur = self.db.cursor()
     
     def searchFile(self, file):
-        self.cur.execute('select id, file, htype, hash, norm from images where file = ?', (file,))
+        self.cur.execute('select id, file, hash, norm from images where file = ?', (file,))
         return self.cur.fetchall()
     
-    def searchImage(self, image):
-        return self.search(hash(image))
-    
-    def search(self, hash):
-        htype, hash = hash
-        if htype == HFAILED:
-            for row in self.cur.execute("select id, file, htype, hash, norm from images where htype = ?", (HFAILED,)):
+    def search(self, h):
+        rows = self.cur.execute("select id, file, hash, norm from images where norm < ? and norm > ?",
+            (norm(h) + threshold, norm(h) - threshold))
+        for row in rows:
+            if distance(h, base64.b64decode(row[2].encode())) < threshold:
                 yield row
-        else:
-            norm = method.norm(hash)
-            rows = self.cur.execute("select id, file, htype, hash, norm from images where htype = ? and norm < ? and norm > ?",
-                (htype, norm + threshold, norm - threshold))
-            for row in rows:
-                if method.distance(hash, method.stringToHash(row[3], **kwargs), **kwargs) < threshold:
-                    yield row
     
-    def insert(self, image, file):
-        htype, h = hash(image)
-        if htype == HFAILED:
-            hstr, norm = "", 0
-        else:
-            hstr, norm = method.hashToString(h, **kwargs), method.norm(h, **kwargs)
-        
+    def insert(self, file):
+        h = hash(file)
         id = self.cur.execute("select max(id) from images").fetchone()[0] or 0
-        self.cur.execute("insert into images (id, file, htype, hash, norm) values (?,?,?,?,?)",
-            (id+1, file, htype, hstr, norm))
+        self.cur.execute("insert into images (id, file, hash, norm) values (?,?,?,?)",
+            (id+1, file, base64.b64encode(h).decode(), norm(h)))
         self.db.commit()
     
     def remove(self, file):
@@ -107,7 +92,7 @@ class ImagesDB:
             return False
     
     def list(self):
-        self.cur.execute('select id, file, htype, hash, norm from images')
+        self.cur.execute('select id, file, hash, norm from images')
         return self.cur.fetchall()
     
     def close(self):
@@ -125,14 +110,13 @@ if __name__ == "__main__":
             args.append(arg)
     mode, args = args[0], args[1:]
     
-    db = ImageDB(opts.get('db', '.images.db'))
+    db = ImagesDB(opts.get('db', '.images.db'))
     
     def init():
         db.cur.execute("""
             CREATE TABLE images (
                 id longint,
                 file string,
-                htype shortint,
                 hash char(96),
                 norm longint)""")
     
@@ -145,12 +129,12 @@ if __name__ == "__main__":
         
         if res:
             row = res[0]
-            print("%s-%s %s" % (HSTATUS.get(int(row[2])), row[3], row[4]))
+            print("%s %s" % (row[2], row[3]))
         else:
             print("not in the base")
     
     def dups(file):
-        res = list(db.searchImage(Image.open(f)))
+        res = list(db.search(hash(f)))
         
         if res:
             print(" ".join((row[1] for row in res)))
@@ -158,16 +142,14 @@ if __name__ == "__main__":
     
     def importfile(file):
         try:
-            db.insert(Image.open(file), file)
+            db.insert(file)
         except:
             print("Can't insert %s" % file, file=sys.stderr)
             raise
     
     def fileHash(file):
-        htype, h = hash(Image.open(file))
-        norm = method.norm(h, **kwargs)
-        h = method.hashToString(h, **kwargs)
-        print("%s-%s %s" % (HSTATUS.get(htype), h, norm))
+        h = hash(file)
+        print("%s %s" % (base64.b64encode(h).decode(), norm(h)))
     
     if mode == 'init':
         init()
