@@ -64,12 +64,13 @@
 // Cr = Components.results;
 // Cu = Components.utils;
 
-if(location == "chrome://browser/content/browser.xul") {
+if(document.location == "chrome://browser/content/browser.xul") {
     userChrome.import("jquery.js", "UChrm");
     userChrome.import("restartFirefox.uc.js", "UChrm");
     userChrome.import("userScripts.uc.js", "UChrm");
     userChrome.import("file.uc.js", "UChrm");
     userChrome.import("userScripts", "UChrm");
+    userChrome.import("userChrome", "UChrm");
 
     /* Desactivate Ctrl-Q */
     window.addEventListener('keypress',
@@ -79,5 +80,5 @@ if(location == "chrome://browser/content/browser.xul") {
                 evt.stopPropagation();
                 evt.preventDefault();
             }
-         }, false);
+         }, true);
 }

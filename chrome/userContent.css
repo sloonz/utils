@@ -22,8 +22,8 @@
 	opacity: 1 !important;
 }
 
-@-moz-document domain(filestube.com) {
+/* @-moz-document domain(filestube.com) {
 	div {
 		height: auto !important;
 	}
-}
+} */
