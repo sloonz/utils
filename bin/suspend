@@ -1,8 +1,0 @@
-#!/bin/sh
-
-if [[ "$1" != "-nowait" ]] ; then
-	sleep 5
-fi
-killall mplayer
-echo mem > /sys/power/state
-

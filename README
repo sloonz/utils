@@ -2,44 +2,28 @@ This is a set of useful (at least for me) scripts:
 
  * php/cgi-bin.php: a PHP script which can execute any CGI script for
    hosts allowing PHP but not CGI
- * batmon.c: a simple daemon which polls battery level and executes a
-   command when the low level is reached
+ * him: a set of scripts for image hashing. Documentation is the code.
+ * aencode: frontend to mkvtools and aacplusenc
+ * bank-mailer: a simple interface to weboob to send by mails all
+   operations on bank account
  * bf: a script which reads all STDIN and writes it to its argument. Can
    be used to safely read and write in the same file (for example,
    cat myfile | grep ... | other filters | bf myfile)
- * chktemp: a script which set cpufreq governor to powersave when a too
-   high temperature is reached. "too high" must be defined yourself in
-   the file, it is dependent of the laptop
  * editor: runs scite when X is running, vim if X isn't running
  * encode: a frontend to mencoder to encode x264 files
+ * mkv-list and mkv-extract: frontends to mkvtoolnix
+ * mnt: command-line interface to udisks (aka devicekit-disks, the
+   successor of hal)
  * pdf2djvu: a pdf to djvu converter which can manage the text layer of
    the file
  * pren: batch renaming with perl regular expresions
- * mkv-list and mkv-extract: frontends to mkvtoolnix
+ * qiv-command: an implementation of qiv-command wich simply evaluate
+   QIV_ACTIONn when n is pressed
  * random: print one of its argument
+ * runvb: simple script to manage multiple VirtualBox disk images
+ * scan: a simple interface to sane to create DjVu files
  * sci: a frontend to scite remote interface. sci foo.c:42 will open 
    foo.c and go to line 42
- * tcproxy: a generic SOCKS proxy to dump data exchanged between a client
-   and a server. To use it : run the server on port X (./tcproxy X) and then
-   socksify the application to use the proxy (tsocks wget http://google.fr)
- * wmii_systemload.c: a system load (CPU/mem/swap) for wmii2
- * mnt: command-line interface to udisks (aka devicekit-disks, the
-   successor of hal)
- * rss2maildir: a python script which puts new feed entries to a Maildir
-   box. The config file is in ~/.config/rss2maildir/feeds.yml. Syntax is
-   described below. There is also a Go version, which use json for config
-   file and need go-qprintable, go-maildir and go-mime-message.
- * dnsbackend.*: this is a dns cache with a uncommon working :
-    - it ignores the TTL
-    - when receiving a request, it immediatly send the cached response
-      to the client, and transmit the query to update the record event
-      if the response is cached
-   The goal is to have a reliable cache when your DNS server is gone,
-   and to get the most recent data.
-     dnsbackend.go: the main process, written in Google Go
-     dnsbackend.py: bridge betweeen the main process and unbound
-     dnsbackend.rc: ArchLinux start script for the main process
-     dhclient-enter-hoosk: enter hooks for dhclient
  * scimake is a simple makefile generator intended for really small 
    projects (in facts, more for small tests). It works by adding a 
    comment in the head of the file to compile, e.g.
@@ -47,40 +31,11 @@ This is a set of useful (at least for me) scripts:
     // ~ depends: bar.c
    and then running scimake foo.c build
    The documentation is the code ;)
- * him: a set of scripts for image hashing. Documentation is the code.
- * scan: a simple interface to sane to create DjVu files
- * bank-mailer: a simple interface to weboob to send by mails all
-   operations on bank account
- * runvb: simple script to manage multiple VirtualBox disk images
- * suspend: wait 5 seconds and then suspend to RAM
- * proxy: a HTTP proxy which pass its queries to a PHProxy. Usage:
-     proxy -a(proxy name)
-   The chosen proxy is the first matching (as substring) (proxy
-   name). There are several predefined, you can check in the code
+ * tcproxy: a generic SOCKS (v4) proxy to dump data exchanged between a client
+   and a server. To use it : run the server on port X (./tcproxy X) and then
+   socksify the application to use the proxy (tsocks wget http://google.fr)
+ * wmii_systemload.c: a system load (CPU/mem/swap) for wmii2
 
 There is also a set of userchrome.js scripts to put in your chrome/ folder
 for firefox (various helpers, keyboard navigation)
 Edit userChrome.js to load the scripts you need.
-
-== feeds.yml example ==
-
-IT:
- Slashdot: http://rss.slashdot.org/Slashdot/slashdot
- Ryan Tomayko: http://tomayko.com/feed
- The WHATWG Blog: http://blog.whatwg.org/feed
- Diary Of An x264 Developer: http://x264dev.multimedia.cx/?feed=atom
-Fun: 
-  XKCD: http://xkcd.com/atom.xml
-  Very Demotivational: http://feeds.feedburner.com/VeryDemotivational
-  Friends of Irony: http://feeds.feedburner.com/FriendsOfIrony
-  FAIL Blog: http://feeds.feedburner.com/failblog
-  Learn From My Fail: http://feeds.feedburner.com/lfmf
-  GraphJam: http://feeds.feedburner.com/GraphJam
-  Pundit Kitchen: http://feeds.feedburner.com/PunditKitchen
-  This is Photobomb: http://feeds2.feedburner.com/thisisphotobomb
-  Autocomplete Me: http://feeds.feedburner.com/AutocompleteMe
-
-Everything is dictionaries. Keys are folder names, values are:
- - a dictonary containing sub-folders and feeds for folders
- - the url for feeds
-
