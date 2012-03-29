@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python2
 
 import sys, os, subprocess
 
@@ -107,7 +107,7 @@ class Makefile(list):
 			fd.write('%s: %s\n\t%s\n\n' % rule)
 		fd.close()
 		
-		print("> make -f SciMakefile ",target)
+		print "> make -f SciMakefile ",target
 		os.execlp('make', 'make', '-f', 'SciMakefile', target)
 	
 	def _compile(self, source):
