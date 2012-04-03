@@ -66,11 +66,8 @@
 
 if(document.location == "chrome://browser/content/browser.xul") {
     userChrome.import("jquery.js", "UChrm");
-    userChrome.import("restartFirefox.uc.js", "UChrm");
-    userChrome.import("userScripts.uc.js", "UChrm");
-    userChrome.import("file.uc.js", "UChrm");
-    userChrome.import("userScripts", "UChrm");
     userChrome.import("userChrome", "UChrm");
+    userChrome.import("userScripts", "UChrm");
 
     /* Desactivate Ctrl-Q */
     window.addEventListener('keypress',
