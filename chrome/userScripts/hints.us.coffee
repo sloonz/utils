@@ -127,32 +127,16 @@ class UsHints
 callbacks =
     simulateClick: (ush, element)->
         element.focus()
-        event = ush.document.createEvent 'MouseEvents'
-        event.initMouseEvent('click',
-            true, true,                  # canBubble, cancelable
-            ush.document.defaultView, 1, # view, click count 
-            0, 0,                        # screen coords 
-            0, 0,                        # client coords 
-            false, false, false, false,  # ctrl, alt, shift, meta 
-            0, null)                     # button, related target 
-        element.dispatchEvent event
+        element.dispatchEvent(userScripts.utils.createClickEvent(document))
         return false
 
     simulateCtrlClick: (ush, element)->
         element.focus()
-        event = ush.document.createEvent 'MouseEvents'
         if navigator.appVersion.indexOf("Mac") != -1
             [ctrl, meta] = [false, true]
         else
             [ctrl, meta] = [true, false]
-        event.initMouseEvent('click',
-            true, true,                  # canBubble, cancelable
-            ush.document.defaultView, 1, # view, click count 
-            0, 0,                        # screen coords 
-            0, 0,                        # client coords 
-            ctrl, false, false, meta,    # ctrl, alt, shift, meta 
-            0, null)                     # button, related target 
-        element.dispatchEvent event
+        element.dispatchEvent(userScripts.utils.createClickEvent(document, ctrl, false, false, meta))
         return false
 
     activate: (ush, element)->

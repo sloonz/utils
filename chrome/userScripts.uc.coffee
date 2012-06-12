@@ -1,6 +1,7 @@
 this.userScripts = 
     scripts: []
     globalDocument: document
+    utils: {}
     init: (appcontent)->
         userScripts.globalDocument ?= document
         userScripts.firstResponder = null
@@ -202,6 +203,30 @@ this.userScripts =
         else
             isHandler = false
         document._usCommands[cmd] = [callback, isHandler]
+
+userScripts.utils.spawnProcess = (command, args)->
+    path = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironment).get("PATH")
+    file = null
+    for p in path.split(":")
+        if p != ""
+            file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile)
+            file.append(command)
+            if file.exists()
+                break
+
+    process = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess)
+    process.init(file)
+    process.run(false, args, args.length)
+
+userScripts.utils.createClickEvent = (doc, ctrl, alt, shift, meta)->
+   e = doc.createEvent("MouseEvent")
+   ctrl ?= false
+   alt ?= false
+   shift ?= false
+   meta ?= false
+   e.initMouseEvent("click", true, true, doc.defaultView,
+       1, 0, 0, 0, 0, ctrl, alt, shift, meta, 0, null)
+   return e
 
 appcontent = document.getElementById 'appcontent'
 userScripts.init appcontent if appcontent?
