@@ -28,6 +28,14 @@ this.userScripts =
                     userScripts.bindHotKey(document, script.hotkey, script.callback)
                 else
                     script.callback document
+
+    wrapCallback: (callback, default_retval)->
+        return ()->
+            try
+                return callback.apply(null, arguments)
+            catch error
+                userChrome.log("User script error: " + error)
+                return default_retval
     
     register: (script)->
         includes = []
@@ -42,7 +50,7 @@ this.userScripts =
         $.merge(excludes, script.rexcludes) if script.rexcludes?
         
         userScripts.scripts.push
-            callback: script.callback
+            callback: userScripts.wrapCallback(script.callback, null)
             includes: includes
             excludes: excludes
             hotkey: script.hotkey
@@ -76,6 +84,7 @@ this.userScripts =
         return [ctrl, meta, shift, alt, charCode]
     
     bindHotKey: (document, rawHotkey, callback)->
+        callback = userScripts.wrapCallback(callback, true)
         hotkey = userScripts.parseHotKey rawHotkey
         document.addEventListener 'keypress',
             (event)->
@@ -91,6 +100,7 @@ this.userScripts =
 
     bindCommand: (document, cmd, callback)->
         document ?= userScripts.globalDocument
+        callback = userScripts.wrapCallback(callback, false)
 
         if not document._usCommands?
             # Install required properties & event handlers
