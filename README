@@ -1,17 +1,10 @@
 This is a set of useful (at least for me) scripts:
 
- * php/cgi-bin.php: a PHP script which can execute any CGI script for
-   hosts allowing PHP but not CGI
  * him: a set of scripts for image hashing. Documentation is the code.
- * aencode: frontend to mkvtools and aacplusenc
- * bank-mailer: a simple interface to weboob to send by mails all
-   operations on bank account
  * bf: a script which reads all STDIN and writes it to its argument. Can
    be used to safely read and write in the same file (for example,
    cat myfile | grep ... | other filters | bf myfile)
  * editor: runs scite when X is running, vim if X isn't running
- * encode: a frontend to mencoder to encode x264 files
- * mkv-list and mkv-extract: frontends to mkvtoolnix
  * mnt: command-line interface to udisks (aka devicekit-disks, the
    successor of hal)
  * pdf2djvu: a pdf to djvu converter which can manage the text layer of
@@ -34,7 +27,6 @@ This is a set of useful (at least for me) scripts:
  * tcproxy: a generic SOCKS (v4) proxy to dump data exchanged between a client
    and a server. To use it : run the server on port X (./tcproxy X) and then
    socksify the application to use the proxy (tsocks wget http://google.fr)
- * wmii_systemload.c: a system load (CPU/mem/swap) for wmii2
 
 There is also a set of userchrome.js scripts to put in your chrome/ folder
 for firefox (various helpers, keyboard navigation)
