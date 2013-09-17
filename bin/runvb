@@ -2,7 +2,7 @@
 
 # Defaults
 root="$HOME/vm"
-root_type="immutable"
+root_type="normal"
 cdrom="empty"
 cdrom2="empty"
 image="empty"
@@ -102,14 +102,7 @@ else
 	VBoxManage -q storageattach $vm --storagectl IDE0 --port 0 --device 1 --type dvddrive --medium "$cdrom" &&
 	VBoxManage -q storageattach $vm --storagectl IDE0 --port 1 --device 0 --type hdd --medium "$image" &&
 	VBoxManage -q storageattach $vm --storagectl IDE0 --port 1 --device 1 --type dvddrive --medium "$cdrom2" || exit 1
-
-	# Change BIOS clock
-	echo "Setting BIOS clock to $date"
-	date_secs=$(date -d$date +%s)
-	now_secs=$(date +%s)
-	delta_msec=$(expr \( $date_secs - $now_secs \) \* 1000)
-	VBoxManage -q modifyvm $vm --biossystemtimeoffset $delta_msec || exit 1
 fi
 
 echo
-exec VBoxSDL --nograbonclick --startvm $vm
+exec VBoxManage startvm $vm
