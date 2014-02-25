@@ -12,7 +12,6 @@ This is a set of useful (at least for me) scripts:
  * pren: batch renaming with perl regular expresions
  * qiv-command: an implementation of qiv-command wich simply evaluate
    QIV_ACTIONn when n is pressed
- * random: print one of its argument
  * runvb: simple script to manage multiple VirtualBox disk images
  * scan: a simple interface to sane to create DjVu files
  * sci: a frontend to scite remote interface. sci foo.c:42 will open 
