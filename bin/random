@@ -1,7 +1,0 @@
-#!/usr/bin/python
-
-from random import randint
-from sys import argv
-
-print(argv[randint(1,len(argv)-1)])
-
