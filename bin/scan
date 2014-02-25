@@ -70,7 +70,7 @@ def lines(fd):
 	return
 
 pnmfiles = []
-def scan_page(image, progress_dialog):
+def scan_page(image, progress_dialog, fc):
 	def scan_done():
 		temp_files.append(output_djvu_file)
 		current_image['file'] = output_djvu_file.name
@@ -79,12 +79,13 @@ def scan_page(image, progress_dialog):
 		zoom_one(image)
 		progress_dialog.hide()
 		output_pnm_file.close()
+		save_to(fc.get_file().get_path())
 	
 	output_pnm_file = tempfile.NamedTemporaryFile(prefix = 'scan', suffix = ".pnm")
 	output_djvu_file = tempfile.NamedTemporaryFile(prefix = 'scan', suffix = ".djvu")
 	
 	# Scan & trim
-	sp = subprocess.Popen(["scanimage", "-d", scanner, "-vp"], stdout = subprocess.PIPE, stdin = subprocess.PIPE, stderr = subprocess.PIPE)
+	sp = subprocess.Popen(["scanimage", "-vpd", scanner, "--resolution", "300"], stdout = subprocess.PIPE, stdin = subprocess.PIPE, stderr = subprocess.PIPE)
 	sp_convert = subprocess.Popen(["convert", "-trim", "-resize", "40%", "-", output_pnm_file.name], stdin = sp.stdout)
 	sp.stdin.close()
 	for line in lines(sp.stderr):
@@ -169,14 +170,12 @@ def create_gui():
 		zoom_one(im)
 	def on_zoom_to_window_clicked(*args):
 		zoom_to_window(im)
-	def on_scan_button_clicked(*args):
+	def on_scansave_button_clicked(*args):
 		progress_dialog = ProgressDialog("Scan progress", win, "")
-		threading.Thread(target = scan_page, args = [im, progress_dialog]).start()
+		threading.Thread(target = scan_page, args = [im, progress_dialog, fc]).start()
 		progress_dialog.run()
 	def on_open_button_clicked(*args):
 		open_djview(fc.get_file().get_path())
-	def on_save_button_clicked(*args):
-		gobject.idle_add(save_to, fc.get_file().get_path())
 	
 	win = gtk.Window()
 	win.set_title("Scan")
@@ -191,7 +190,7 @@ def create_gui():
 	
 	fc = gtk.FileChooserWidget(gtk.FILE_CHOOSER_ACTION_SAVE)
 	fc.set_current_folder_uri("file://" + os.path.join(user.home, "paperasse"))
-	fc.connect("file-activated", on_save_button_clicked)
+	fc.connect("file-activated", on_scansave_button_clicked)
 	
 	btn_zoom_in = gtk.Button()
 	btn_zoom_out = gtk.Button()
@@ -212,15 +211,12 @@ def create_gui():
 	hbb1.pack_start(btn_zoom_to_window, True, False)
 	hbb1.set_layout(gtk.BUTTONBOX_START)
 	
-	btn_scan = gtk.Button("Scan")
-	btn_save = gtk.Button(stock = gtk.STOCK_SAVE)
+	btn_scansave = gtk.Button("Scan & save")
 	btn_open = gtk.Button(stock = gtk.STOCK_OPEN)
-	btn_scan.connect("clicked", on_scan_button_clicked)
-	btn_save.connect("clicked", on_save_button_clicked)
+	btn_scansave.connect("clicked", on_scansave_button_clicked)
 	btn_open.connect("clicked", on_open_button_clicked)
 	hbb2 = gtk.HButtonBox()
-	hbb2.pack_start(btn_scan, True, False)
-	hbb2.pack_start(btn_save, True, False)
+	hbb2.pack_start(btn_scansave, True, False)
 	hbb2.pack_start(btn_open, True, False)
 	hbb2.set_layout(gtk.BUTTONBOX_END)
 	
