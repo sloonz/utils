@@ -26,6 +26,8 @@ This is a set of useful (at least for me) scripts:
  * tcproxy: a generic SOCKS (v4) proxy to dump data exchanged between a client
    and a server. To use it : run the server on port X (./tcproxy X) and then
    socksify the application to use the proxy (tsocks wget http://google.fr)
+ * htmlindent: tool to indent html files without sanitizing them (used for
+   html files containing php code)
 
 There is also a set of userchrome.js scripts to put in your chrome/ folder
 for firefox (various helpers, keyboard navigation)

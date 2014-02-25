@@ -1,0 +1,88 @@
+#!/usr/bin/python
+
+"""
+General algorithm:
+
+    1: <div>
+    2: <p><b>test</b>
+    3: Hello<div><span>
+    4: Test</div></span>
+    5: </p>
+    6: </div>
+
+Produces the following "state" for each line (a "state" is a list of
+open tags with the indentation of their content) :
+
+    1: (div, 1)
+    2: (div, 1), (p, 2)
+    3: (div, 1), (p, 2), (div, 3), (span, 3)
+    4: (div, 1), (p, 2)
+    5: (div, 1)
+    6: 
+
+Rules for producing the state is the same as HTML. The indentation is
+the same as depth, except that it can be only increased by 1 each line
+
+Indentation at line L is the indentation of the outermost element of
+state produced by line L-1, minus one if the line L starts by closing
+the outermost element of state produced by line L-1
+"""
+
+import sys
+import re
+
+VOID_ELEMENTS = ["area", "base", "br", "col", "command", "embed", "hr", "img", "input",
+"keygen", "link", "meta", "param", "source", "track", "wbr"]
+
+lines = list(sys.stdin)
+has_tabs = False
+has_spaces = False
+min_spaces = 0
+for l in lines:
+    indent = re.match("\t* *", l).group(0)
+    if "\t" in indent:
+        has_tabs = True
+    if " " in indent:
+        has_spaces = True
+        spaces_count = len(indent.strip("\t"))
+        if spaces_count < min_spaces or min_spaces == 0:
+            min_spaces = spaces_count
+
+indent_str = ""
+if has_tabs:
+    if has_spaces:
+        print("Warning: spaces and tabs detected, assuming tabs", file = sys.stderr)
+    indent_str = "\t"
+else:
+    indent_str = " " * min_spaces
+
+tags = []
+for (i, l) in enumerate(lines):
+    # Compute indentation of current line
+    indent = 0
+    if tags:
+        indent = tags[-1][1]
+        if l.strip().startswith("</"+tags[-1][0]+">"):
+            indent -= 1
+
+    # Compute the new state without the indentation of the new elements
+    for (closing, t) in re.findall("<(/?)(\w+)", l):
+        if t in VOID_ELEMENTS:
+            continue
+        if closing:
+            if not tags or tags[-1][0] != t:
+                print("Error: unmatched </%s> at line %d" % (t, i+1), file = sys.stderr)
+                sys.exit(1)
+            tags = tags[:-1]
+        else:
+            tags.append([t, None])
+
+    # Compute the indentation of new elements
+    last_indent = 0
+    for t in tags:
+        if t[1]:
+            last_indent = t[1]
+        elif t[1] is None:
+            t[1] = last_indent + 1
+
+    print(indent_str * indent + l.lstrip().rstrip("\n"))
